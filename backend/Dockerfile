@@ -5,9 +5,9 @@
 # `uv sync --no-dev` skips the dev group (pytest/jsonschema); the lockfile
 # keeps the image on the exact versions the tests ran against locally.
 #
-# Build locally to smoke-test:
+# Build locally to smoke-test (any key works locally; unset key rejects all):
 #   docker build -t ttmf-banksync-mock .
-#   docker run --rm -p 8000:8000 -e BANKSYNC_MOCK_KEY=mock-key ttmf-banksync-mock
+#   docker run --rm -p 8000:8000 -e BANKSYNC_MOCK_KEY=local-dev ttmf-banksync-mock
 
 FROM ghcr.io/astral-sh/uv:python3.11-trixie-slim
 

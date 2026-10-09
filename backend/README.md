@@ -29,6 +29,10 @@ cp .env.example .env
 uv sync
 ```
 
+The `change-me` values in `.env` are local placeholders — the two key lines
+must simply match each other. If you will ever share your endpoint, replace
+them with a random value: `openssl rand -hex 16`.
+
 Terminal 1 — start the mock (note `0.0.0.0`: the Android emulator reaches the
 host machine via `10.0.2.2`):
 
@@ -55,9 +59,18 @@ Once deployed, the auditor engine points its `BANKSYNC_BASE_URL` at that URL —
 the Android app itself only talks to Firebase, never to the mock directly.
 
 ```powershell
+# 1. Generate a one-off key and keep it out of git/shell history where possible:
 gcloud builds submit backend --config backend/cloudbuild.yaml `
-  --substitutions _MOCK_KEY=mock-key   # _AR_REPO defaults to "ttmf"; override if your Artifact Registry repo has a different name
+  --substitutions _MOCK_KEY=<paste-key-here>   # e.g. the output of: openssl rand -hex 16
+# _AR_REPO defaults to "ttmf"; override if your Artifact Registry repo has a different name
 ```
+
+### Cost & abuse
+
+- **`min-instances 0`** — the service scales to zero when nobody is calling it, so an idle prototype costs **$0**. (Trade-off: ~1s cold start on the first request after idle — invisible in a demo.)
+- **`max-instances 10`** — hard ceiling on concurrency, so a malicious or runaway caller can burn a few dollars an hour at most, not unbounded.
+- The data behind the endpoint is synthetic; there is nothing worth stealing. The deploy-time key (never stored in this repo) is the only gate — if this ever serves real bank data, switch to IAP + a KMS secret (see the note in `cloudbuild.yaml`).
+- Before your first deploy: set a **billing budget alert** (GCP Console → Billing → Budgets, e.g. email me at $5) as a tripwire.
 
 ## Conventions
 

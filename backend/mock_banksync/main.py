@@ -15,7 +15,8 @@ from fastapi.responses import JSONResponse
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
-MOCK_KEY = os.getenv("BANKSYNC_MOCK_KEY", "mock-key")
+# No fallback: if the key is unset, every request is rejected (fail closed).
+MOCK_KEY = os.getenv("BANKSYNC_MOCK_KEY")
 PAGE_SIZE = 25
 TRANSACTIONS = json.loads(
     (ROOT / "mock_banksync/data/transactions.json").read_text(encoding="utf-8")
@@ -42,7 +43,7 @@ async def validation_error(request: Request, exc: RequestValidationError):
 
 
 def require_key(x_api_key: str | None = Header(default=None)):
-    if x_api_key != MOCK_KEY:
+    if MOCK_KEY is None or x_api_key != MOCK_KEY:
         raise HTTPException(status_code=401, detail="Missing or invalid API key")
 
 

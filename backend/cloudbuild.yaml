@@ -1,28 +1,34 @@
 # Cloud Build pipeline for the BankSync mock -> Cloud Run.
 #
-# Submit from the repo root:
+# Submit from the repo root (generate a key first — it must never live in git):
 #   gcloud builds submit backend \
 #     --config backend/cloudbuild.yaml \
-#     --substitutions _MOCK_KEY=mock-key,REGION=australia-southeast1
+#     --substitutions _MOCK_KEY=$(openssl rand -hex 16)
 #
 # or wire this into the GitHub Actions / Cloud Build trigger of the monorepo
 # with the same substitutions. Requires:
 #   gcloud config set artifacts/repository <your-arthub-repo>   (Artifact Registry)
 #
+# Cost: min-instances is 0 (scales to zero when idle, i.e. $0 at rest) and
+# max-instances is capped so a malicious or runaway caller cannot spin up
+# unbounded instances. Set a GCP budget alert (e.g. $5) before first deploy.
+#
 # Note: image tags use $BUILD_ID rather than $COMMIT_SHA, because COMMIT_SHA
 # is only set for trigger/repo builds and resolves to an empty string for
 # local `gcloud builds submit`. BUILD_ID is set for every build.
 #
-# NOTE: for a hackathon-prototype mock with a dummy key we leave the service
-# reachable and gate it with the X-API-Key header in the app itself. If this
-# ever serves real bank data, add --no-allow-unauthenticated (and an
-# Identity-Aware Proxy policy) and pass the key as a KMS secret instead of a
-# plain --env substitution.
+# NOTE: for a hackathon-prototype mock with a generated key we leave the
+# service reachable and gate it with the X-API-Key header in the app itself.
+# The data served is synthetic and worthless to an attacker; if this ever
+# serves real bank data, add --no-allow-unauthenticated (and an Identity-Aware
+# Proxy policy) and pass the key as a KMS secret instead of a plain --env
+# substitution.
 
 substitutions:
   _SERVICE: ttmf-banksync-mock
   _AR_REPO: ttmf
-  _MOCK_KEY: mock-key
+  # _MOCK_KEY is deliberately NOT given a default: a deploy that omits it
+  # fails the build instead of shipping an unauthenticated endpoint.
   REGION: australia-southeast1
 
 steps:
@@ -54,7 +60,9 @@ steps:
         "--memory",
         "512Mi",
         "--min-instances",
-        "1",
+        "0",
+        "--max-instances",
+        "10",
         "--env",
         "BANKSYNC_MOCK_KEY=$(_MOCK_KEY)",
       ]
