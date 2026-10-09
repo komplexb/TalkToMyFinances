@@ -56,7 +56,7 @@ the Android app itself only talks to Firebase, never to the mock directly.
 
 ```powershell
 gcloud builds submit backend --config backend/cloudbuild.yaml `
-  --substitutions _AR_REPO=<your-registry>,_MOCK_KEY=mock-key
+  --substitutions _MOCK_KEY=mock-key   # _AR_REPO defaults to "ttmf"; override if your Artifact Registry repo has a different name
 ```
 
 ## Conventions
