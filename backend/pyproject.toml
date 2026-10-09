@@ -10,6 +10,10 @@ dependencies = [
     "python-dotenv>=1,<2",
 ]
 
+[tool.uv]
+# This is a flat app (mock + client run as modules, not installed as a package).
+package = false
+
 [dependency-groups]
 dev = ["pytest>=8,<10", "jsonschema>=4,<5"]
 
