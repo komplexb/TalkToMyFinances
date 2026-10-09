@@ -68,7 +68,7 @@ gcloud builds submit backend --config backend/cloudbuild.yaml `
 ### Cost & abuse
 
 - **`min-instances 0`** — the service scales to zero when nobody is calling it, so an idle prototype costs **$0**. (Trade-off: ~1s cold start on the first request after idle — invisible in a demo.)
-- **`max-instances 10`** — hard ceiling on concurrency, so a malicious or runaway caller can burn a few dollars an hour at most, not unbounded.
+- **`max-instances 1`** — the mock is stateless, so one instance (≈80 concurrent requests) is plenty for a prototype. Even a hammering caller tops out at one 512 Mi instance: a few cents an hour at full load, not unbounded.
 - The data behind the endpoint is synthetic; there is nothing worth stealing. The deploy-time key (never stored in this repo) is the only gate — if this ever serves real bank data, switch to IAP + a KMS secret (see the note in `cloudbuild.yaml`).
 - Before your first deploy: set a **billing budget alert** (GCP Console → Billing → Budgets, e.g. email me at $5) as a tripwire.
 

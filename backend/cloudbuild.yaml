@@ -10,8 +10,10 @@
 #   gcloud config set artifacts/repository <your-arthub-repo>   (Artifact Registry)
 #
 # Cost: min-instances is 0 (scales to zero when idle, i.e. $0 at rest) and
-# max-instances is capped so a malicious or runaway caller cannot spin up
-# unbounded instances. Set a GCP budget alert (e.g. $5) before first deploy.
+# max-instances is 1: the mock is stateless and in-memory, and one instance
+# handles ~80 concurrent requests — plenty for a prototype, and it caps the
+# worst-case bill at a few cents an hour at full load.
+# Set a GCP budget alert (e.g. $5) before first deploy.
 #
 # Note: image tags use $BUILD_ID rather than $COMMIT_SHA, because COMMIT_SHA
 # is only set for trigger/repo builds and resolves to an empty string for
@@ -62,7 +64,7 @@ steps:
         "--min-instances",
         "0",
         "--max-instances",
-        "10",
+        "1",
         "--env",
         "BANKSYNC_MOCK_KEY=$(_MOCK_KEY)",
       ]
