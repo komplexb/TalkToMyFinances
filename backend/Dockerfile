@@ -9,7 +9,7 @@
 #   docker build -t ttmf-banksync-mock .
 #   docker run --rm -p 8000:8000 -e BANKSYNC_MOCK_KEY=mock-key ttmf-banksync-mock
 
-FROM ghcr.io/astral-sh/uv:3.11
+FROM ghcr.io/astral-sh/uv:python3.11-trixie-slim
 
 WORKDIR /service
 ENV PYTHONUNBUFFERED=1 \
