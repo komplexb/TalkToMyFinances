@@ -1,0 +1,9 @@
+{
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "firestore": {
+    "database": "talktomyfinances",
+    "rules": "firestore.rules"
+  }
+}

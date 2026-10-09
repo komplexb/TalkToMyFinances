@@ -1,0 +1,593 @@
+package com.talktomyfinances.android.ui.recipe
+
+import android.Manifest.permission.CAMERA
+import android.Manifest.permission.RECORD_AUDIO
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.core.content.ContextCompat
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.talktomyfinances.android.R
+import com.talktomyfinances.android.ui.shared.RatingButton
+import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
+import com.talktomyfinances.android.ui.theme.LightTeal
+import com.talktomyfinances.android.ui.theme.Teal
+import com.talktomyfinances.android.ui.theme.TextColor
+import com.halilibo.richtext.commonmark.Markdown
+import com.halilibo.richtext.ui.BasicRichText
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class RecipeRoute(val recipeId: String)
+
+@Composable
+fun RecipeScreen(
+    viewModel: RecipeViewModel = hiltViewModel(),
+    navigateBack: () -> Unit,
+    navigateToLiveAssistant: (String) -> Unit
+) {
+    val recipeViewState = viewModel.recipeViewState.collectAsStateWithLifecycle()
+    val groceryListToast = stringResource(R.string.added_to_grocery_list_toast)
+    val context = LocalContext.current
+
+    RecipeScreenContent(
+        navigateBack = navigateBack,
+        toggleFavorite = viewModel::toggleFavorite,
+        leaveReview = viewModel::leaveReview,
+        recipeViewState = recipeViewState.value,
+        onLiveAssistantClick = {
+            navigateToLiveAssistant(recipeViewState.value.recipeId)
+        },
+        onAddIngredientsToGrocery = {
+            viewModel.addIngredientsToGroceryList(recipeViewState.value.recipe.ingredients) {
+                Toast.makeText(context, groceryListToast, Toast.LENGTH_SHORT).show()
+            }
+        },
+        onPairingClick = viewModel::onPairingClick
+    )
+}
+
+@Composable
+fun RecipeScreenContent(
+    navigateBack: () -> Unit = {},
+    toggleFavorite: () -> Unit = {},
+    leaveReview: (Int) -> Unit = {},
+    recipeViewState: RecipeViewState,
+    onLiveAssistantClick: () -> Unit = {},
+    onAddIngredientsToGrocery: () -> Unit = {},
+    onPairingClick: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[CAMERA] == true
+        val audioGranted = permissions[RECORD_AUDIO] == true
+        if (cameraGranted && audioGranted) {
+            onLiveAssistantClick()
+        } else {
+            Toast.makeText(context, "Camera and Microphone permissions are required to use the Live Assistant.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val cameraPermissionGranted = ContextCompat.checkSelfPermission(context, CAMERA) == PackageManager.PERMISSION_GRANTED
+    val audioPermissionGranted = ContextCompat.checkSelfPermission(context, RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    val favoriteIcon = if (recipeViewState.favorite) {
+        painterResource(R.drawable.ic_favorite_filled)
+    } else {
+        painterResource(R.drawable.ic_favorite_outline)
+    }
+
+    Scaffold { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.LightGray)
+                        ) {
+                            if (recipeViewState.recipe.imageUri != null) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(recipeViewState.recipe.imageUri)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = stringResource(id = R.string.recipe_image_content_description),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Text(
+                                    text = stringResource(id = R.string.recipe_image_load_error),
+                                    color = Color.White,
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            IconButton(
+                                onClick = { navigateBack() },
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.8f), CircleShape)
+                                    .size(40.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_arrow_back),
+                                    contentDescription = stringResource(id = R.string.back_button_content_description),
+                                    tint = TextColor
+                                )
+                            }
+                            IconButton(
+                                onClick = { toggleFavorite() },
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.8f), CircleShape)
+                                    .size(40.dp)
+                            ) {
+                                Icon(
+                                    painter = favoriteIcon,
+                                    contentDescription = stringResource(id = R.string.recipe_favorite_button_content_description),
+                                    tint = TextColor
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp)
+                    ) {
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Text(
+                            text = recipeViewState.recipe.title,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 34.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                if (cameraPermissionGranted && audioPermissionGranted) {
+                                    onLiveAssistantClick()
+                                } else {
+                                    multiplePermissionsLauncher.launch(
+                                        arrayOf(CAMERA, RECORD_AUDIO)
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Teal),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().height(52.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_cook),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = stringResource(R.string.live_assistant_title),
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        PairingGuideButton(
+                            audioState = recipeViewState.audioState,
+                            onClick = onPairingClick
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            InfoCard(
+                                icon = painterResource(R.drawable.ic_timer),
+                                label = stringResource(id = R.string.recipe_prep_time_label),
+                                value = recipeViewState.recipe.prepTime,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            InfoCard(
+                                icon = painterResource(R.drawable.ic_cook),
+                                label = stringResource(id = R.string.recipe_cook_time_label),
+                                value = recipeViewState.recipe.cookTime,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            InfoCard(
+                                icon = painterResource(R.drawable.ic_serving),
+                                label = stringResource(id = R.string.recipe_servings_label),
+                                value = recipeViewState.recipe.servings,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = stringResource(id = R.string.recipe_ingredients_title),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Teal
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                recipeViewState.recipe.ingredients.forEach {
+                                    IngredientRow(it)
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                Button(
+                                    onClick = { onAddIngredientsToGrocery() },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = LightTeal,
+                                        contentColor = Teal
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = Teal,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Text(
+                                            text = stringResource(R.string.add_to_grocery_list_button),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = stringResource(id = R.string.recipe_instructions_title),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Teal
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                BasicRichText {
+                                    Markdown(recipeViewState.recipe.instructions)
+                                }
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = stringResource(id =  R.string.recipe_rating_title),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Teal
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    repeat(5) { index ->
+                                        val rating = index + 1
+                                        val isSelected = rating == recipeViewState.rating
+                                        val isFilled = rating < recipeViewState.rating
+
+                                        RatingButton(
+                                            rating = rating,
+                                            isSelected = isSelected,
+                                            isFilled = isFilled,
+                                            onClick = { leaveReview(rating) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InfoCard(
+    icon: Painter,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(LightTeal, RoundedCornerShape(12.dp))
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = null,
+            tint = Teal,
+            modifier = Modifier.size(20.dp)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = Color.Gray
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextColor
+        )
+    }
+}
+
+@Composable
+fun IngredientRow(text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(24.dp)
+                .background(LightTeal, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = Teal,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            color = TextColor
+        )
+    }
+}
+
+@Composable
+fun PairingGuideButton(
+    audioState: RecipeAudioState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val containerColor = when (audioState) {
+        is RecipeAudioState.Playing, is RecipeAudioState.Paused -> Teal
+        is RecipeAudioState.LoadingAudio -> LightTeal
+        is RecipeAudioState.Error -> Color(0xFFFFEBEE)
+        is RecipeAudioState.Idle -> LightTeal
+    }
+
+    val contentColor = when (audioState) {
+        is RecipeAudioState.Playing, is RecipeAudioState.Paused -> Color.White
+        is RecipeAudioState.Error -> Color.Red
+        else -> Teal
+    }
+
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = containerColor,
+            contentColor = contentColor
+        ),
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            when (audioState) {
+                is RecipeAudioState.LoadingAudio -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = Teal,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.recipe_pairing_loading_audio),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Teal
+                    )
+                }
+
+                is RecipeAudioState.Playing -> {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_pause),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.recipe_pairing_playing),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                is RecipeAudioState.Paused -> {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_play_arrow),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.recipe_pairing_paused),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                is RecipeAudioState.Error -> {
+                    Text(
+                        text = stringResource(R.string.recipe_pairing_retry),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Red
+                    )
+                }
+
+                is RecipeAudioState.Idle -> {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_drink),
+                        contentDescription = null,
+                        tint = Teal,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(R.string.recipe_pairing_french_wine),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Teal
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+fun RecipeScreenPreview() {
+    TalkToMyFinancesTheme {
+        RecipeScreenContent(
+            recipeViewState = RecipeViewState()
+        )
+    }
+}

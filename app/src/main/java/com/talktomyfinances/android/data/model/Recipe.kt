@@ -1,0 +1,16 @@
+package com.talktomyfinances.android.data.model
+
+import com.google.firebase.firestore.Exclude
+
+data class Recipe(
+    val title: String = "",
+    val instructions: String = "",
+    val ingredients: List<String> = listOf(),
+    val authorId: String = "",
+    val tags: List<String> = listOf(),
+    @get:Exclude val averageRating: Double = 0.0,
+    val prepTime: String = "",
+    val cookTime: String = "",
+    val servings: String = "",
+    val imageUri: String? = null
+)
