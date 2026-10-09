@@ -17,6 +17,22 @@ Welcome to **Talk to My Finances** (`TalkToMyFinances`), an AI-powered personal 
 
 ---
 
+## 📁 Repository Layout
+
+This is a monorepo: the Android app, the Python backend, and the Firebase config live together.
+
+```text
+app/            Android app (Jetpack Compose + Firebase) — Domain A (Byron)
+backend/        Python data layer: BankSync mock, client, auditor engine — Domain B (Kaz)
+prompts/        Firebase AI Logic prompt templates
+firestore.rules / storage.rules / firebase.json   Firebase backend config
+docs/           (PRD & submission materials)
+```
+
+See [backend/README.md](backend/README.md) for how to run and test the Python side.
+
+---
+
 ## 🛠️ Getting Started
 
 1. **Prerequisites**:

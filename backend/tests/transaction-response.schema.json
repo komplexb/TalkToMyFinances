@@ -1,0 +1,266 @@
+{
+  "type": "object",
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "enum": [
+        true
+      ]
+    },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "authorizedDate": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "merchantName": {
+            "type": "string"
+          },
+          "originalDescription": {
+            "type": "string"
+          },
+          "cardLast4": {
+            "type": "string"
+          },
+          "cardholder": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "creditAmount": {
+            "type": "number"
+          },
+          "debitAmount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "providerCategory": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "pendingTransactionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "accountNumber": {
+            "type": "string"
+          },
+          "accountType": {
+            "type": "string"
+          },
+          "bankId": {
+            "type": "string"
+          },
+          "bank": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "description",
+          "amount",
+          "creditAmount",
+          "debitAmount",
+          "currency",
+          "category",
+          "type",
+          "pending",
+          "accountId",
+          "bankId"
+        ],
+        "additionalProperties": {
+          "nullable": true
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "number"
+        },
+        "cursor": {
+          "type": "string",
+          "nullable": true
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "partial": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        }
+      },
+      "required": [
+        "count"
+      ]
+    },
+    "modified": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "authorizedDate": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "merchantName": {
+            "type": "string"
+          },
+          "originalDescription": {
+            "type": "string"
+          },
+          "cardLast4": {
+            "type": "string"
+          },
+          "cardholder": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "creditAmount": {
+            "type": "number"
+          },
+          "debitAmount": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "providerCategory": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "pendingTransactionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "accountNumber": {
+            "type": "string"
+          },
+          "accountType": {
+            "type": "string"
+          },
+          "bankId": {
+            "type": "string"
+          },
+          "bank": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "description",
+          "amount",
+          "creditAmount",
+          "debitAmount",
+          "currency",
+          "category",
+          "type",
+          "pending",
+          "accountId",
+          "bankId"
+        ],
+        "additionalProperties": {
+          "nullable": true
+        }
+      }
+    },
+    "removed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "links": {
+      "type": "object",
+      "properties": {
+        "self": {
+          "type": "string"
+        },
+        "account": {
+          "type": "string"
+        },
+        "next": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "self",
+        "account"
+      ]
+    }
+  },
+  "required": [
+    "success",
+    "data",
+    "meta"
+  ]
+}
