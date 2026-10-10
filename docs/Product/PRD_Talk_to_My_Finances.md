@@ -2,11 +2,11 @@
 
 ## Project Title: "Talk to My Finances"
 
-**Event:** Google Cloud AI Builder Cup 2026  
-**Category:** BFSI: Intelligent Risk, Fraud & Financial Experiences  
-**Sub-Theme:** Delivering More Personalized and Informed Financial Experiences  
-**Full-Theme:**Build an AI-powered solution that addresses meaningful challenges across banking, financial services, insurance, or related industries. Solutions may focus on detecting and mitigating fraud or risk, automating complex processes, improving customer interactions, or delivering more personalized and informed financial experiences.  
-**Target Audience:** Australia’s \~13.3 Million "Mass Market" Retail Consumers ("Jane & John User")  
+**Event:** Google Cloud AI Builder Cup 2026
+**Category:** BFSI: Intelligent Risk, Fraud & Financial Experiences
+**Sub-Theme:** Delivering More Personalized and Informed Financial Experiences
+**Full-Theme:**Build an AI-powered solution that addresses meaningful challenges across banking, financial services, insurance, or related industries. Solutions may focus on detecting and mitigating fraud or risk, automating complex processes, improving customer interactions, or delivering more personalized and informed financial experiences.
+**Target Audience:** Australia’s \~13.3 Million "Mass Market" Retail Consumers ("Jane & John User")
 **Target Deployment:** Google Cloud Platform (Firebase Cloud Functions, Firebase AI Logic, Cloud Run)
 
 ---
@@ -15,7 +15,7 @@
 
 ### 1.1 Category Specification & Legal Boundary
 
-* **BFSI Alignment:** Addresses the "Delivering More Personalized and Informed Financial Experiences" strand of the BFSI theme by making personal financial intelligence accessible to Australia’s 13.3 million Mass Market consumers.  
+* **BFSI Alignment:** Addresses the "Delivering More Personalized and Informed Financial Experiences" strand of the BFSI theme by making personal financial intelligence accessible to Australia’s 13.3 million Mass Market consumers.
 * **Regulatory Positioning (Insight vs. Advice):** Functions strictly as a conversational, plain-English translator and auditor over a user's past bank transaction data . It sits strictly outside regulated financial product advice (superannuation, investment, insurance, or debt recommendations under ASIC guidance) .
 
 ### 1.2 Vision Statement
@@ -24,7 +24,7 @@ Personal finance skills are an "insider’s club" — you either grew up learnin
 
 **"Talk to My Finances"** strips away the homework, cognitive load, and financial jargon . Built specifically for **Jane and John User**, it replaces blank chat boxes and complex dashboards with two core innovations: **proactive discovery** and **natural live conversation** .
 
-1. **The Unasked Audit (Proactive Discovery):** Inspired by Google NotebookLM’s thematic extraction UX, the app reasons over a user's transaction history *before* they ever type or speak . On launch, the system cross-references mathematically verified anomalies across a 6-tier recency spectrum against user goals to surface 3 proactive, positive prompt chips .  
+1. **The Unasked Audit (Proactive Discovery):** Inspired by Google NotebookLM’s thematic extraction UX, the app reasons over a user's transaction history *before* they ever type or speak . On launch, the system cross-references mathematically verified anomalies across a 6-tier recency spectrum against user goals to surface 3 proactive, positive prompt chips .
 2. **Gemini Live Conversational Companion:** Leverage Gemini Live to truly talk to your finances . Whether walking the dog or chilling on the sofa, feeling for takeout of your favourite comfort food? Have a quick tête-à-tête with your account to check where you're at . Jane and John can talk through their money naturally—receiving warm, plain-English explanations and live scenario updates as if chatting with a money-savvy friend .
 
 ### 1.3 Core Product Philosophy: Positive Reinforcement
@@ -35,12 +35,12 @@ Unlike traditional personal finance apps that trigger anxiety by scolding users 
 
 ## 2\. Innovation Tentpoles Matrix
 
-### 
+###
 
 | Innovation Tentpole | Problem Solved | Core UX Mechanism | Tech Implementation |
 | :---- | :---- | :---- | :---- |
 | **Tentpole 1: The Unasked Audit** | Prompt Paralysis & Dashboard Fatigue | Proactive, positive prompt chips based on recency windows (Week to YTD) | Asynchronous background Auditor Agent \+ Gemini 2.5 ranking |
-| **Tentpole 2: Conversational Companion** | Low friction | Hands-free, conversational check-ins while walking the dog, ordering food, or relaxing on the sofa | Firebase AI Logic / Gemini Live API low-latency voice integration  |
+| **Tentpole 2: Conversational Companion** | Low friction | Hands-free, conversational check-ins while walking the dog, ordering food, or relaxing on the sofa | Firebase AI Logic / Gemini Live API low-latency voice integration |
 | **Tentpole 3: Reading Level** | Cognitive Load & Jargon Overwhelm | Support Plain-English explanations by targeting a **Grade 6–8 (Year 7–8 Australian reading level)**, which corresponds to a **Flesch-Kincaid Grade Level of 6.0–8.0** (or a **Flesch Reading Ease score of 60–70+**). | Implementation and Readability Validation Strategy To guarantee the models consistently maintain this reading level without drifting into financial jargon, combine deterministic linting with LLM evals. |
 
 ---
@@ -51,10 +51,10 @@ During onboarding, Jane and John User answer 1–2 simple conversational prompts
 
 ### 3.1 Onboarding Goal Categories
 
-1. **Paycheck Stability (Cash Flow Control):** Breaking the paycheck-to-paycheck cycle and avoiding cash pinches before payday .  
-2. **Safety Net & Bill Security (Emergency Buffer):** Building an emergency cushion and ensuring essential obligations (rent, utilities) are covered .  
-3. **Major Savings Target (Life Milestone):** Reallocating day-to-day leaks toward a specific milestone (e.g., home deposit, trip) .  
-4. **Debt & Obligation Minimization (Repayment Focus):** Reducing high-friction credit card balance creep or BNPL micro-commitments .  
+1. **Paycheck Stability (Cash Flow Control):** Breaking the paycheck-to-paycheck cycle and avoiding cash pinches before payday .
+2. **Safety Net & Bill Security (Emergency Buffer):** Building an emergency cushion and ensuring essential obligations (rent, utilities) are covered .
+3. **Major Savings Target (Life Milestone):** Reallocating day-to-day leaks toward a specific milestone (e.g., home deposit, trip) .
+4. **Debt & Obligation Minimization (Repayment Focus):** Reducing high-friction credit card balance creep or BNPL micro-commitments .
 5. **Mindful Spending (Lifestyle Balance):** Maintaining social dining experiences while curbing low-value convenience delivery apps .
 
 ### 3.2 Full 6-Tier Recency Spectrum Matrix
@@ -70,8 +70,6 @@ During onboarding, Jane and John User answer 1–2 simple conversational prompts
 
 ---
 
-# 
-
 # Technical Overview
 
 Google perhaps has far too many ways to build an app. What gets a bit confusing is when to use what, Gemini API vs ADK. At this point we prefer velocity, anything that gets us to a prototype fast, is what we will use, while being willing to be flexible to pivot if we hit a wall.
@@ -80,23 +78,23 @@ For our purposes we will leverage ADK in Firebase Studio to get us ½ way there 
 
 ### Core
 
-* [https\://github.com/FirebaseExtended/FriendlyMeals-Android](https://github.com/FirebaseExtended/FriendlyMeals-Android)   
-* [https\://github.com/FirebaseExtended/firebase-video-samples/tree/main/firebase-ai-friendly-meals/flutter](https://github.com/FirebaseExtended/firebase-video-samples/tree/main/firebase-ai-friendly-meals/flutter)   
-* [https\://firebase.google.com/docs/ai-logic/hybrid](https://firebase.google.com/docs/ai-logic/hybrid)   
-* Local Inference: [https\://developers.google.com/ml-kit/genai/prompt/android/select-model](https://developers.google.com/ml-kit/genai/prompt/android/select-model)   
-* [https\://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory](https://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory)   
-* [https\://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor](https://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor) 
+* [https\://github.com/FirebaseExtended/FriendlyMeals-Android](https://github.com/FirebaseExtended/FriendlyMeals-Android)
+* [https\://github.com/FirebaseExtended/firebase-video-samples/tree/main/firebase-ai-friendly-meals/flutter](https://github.com/FirebaseExtended/firebase-video-samples/tree/main/firebase-ai-friendly-meals/flutter)
+* [https\://firebase.google.com/docs/ai-logic/hybrid](https://firebase.google.com/docs/ai-logic/hybrid)
+* Local Inference: [https\://developers.google.com/ml-kit/genai/prompt/android/select-model](https://developers.google.com/ml-kit/genai/prompt/android/select-model)
+* [https\://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory](https://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory)
+* [https\://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor](https://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor)
 
 ### Others
 
-* [https\://github.com/google/adk-recipes/tree/main/core/python/oauth-user-consent-flow](https://github.com/google/adk-recipes/tree/main/core/python/oauth-user-consent-flow)   
-* [https\://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory](https://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory)   
-* [https\://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor](https://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor)   
-* [https\://github.com/google/adk-recipes/tree/main/contrib/python/agent-skills-tutorial](https://github.com/google/adk-recipes/tree/main/contrib/python/agent-skills-tutorial)   
-* [https\://medium.com/google-cloud/real-time-audio-to-audio-streaming-with-googles-multimodal-live-api-73b54277b022](https://medium.com/google-cloud/real-time-audio-to-audio-streaming-with-googles-multimodal-live-api-73b54277b022)   
-* [https\://adk.dev/integrations/copilotkit/](https://adk.dev/integrations/copilotkit/)   
-* [https\://agentdirectory.folch.ai/agents/adk\_agent\_builder](https://agentdirectory.folch.ai/agents/adk_agent_builder)   
-* [https\://firebase.google.com/docs/ai-logic/models](https://firebase.google.com/docs/ai-logic/models) 
+* [https\://github.com/google/adk-recipes/tree/main/core/python/oauth-user-consent-flow](https://github.com/google/adk-recipes/tree/main/core/python/oauth-user-consent-flow)
+* [https\://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory](https://github.com/google/adk-recipes/tree/main/core/python/cross-session-memory)
+* [https\://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor](https://github.com/google/adk-recipes/tree/main/contrib/python/financial-advisor)
+* [https\://github.com/google/adk-recipes/tree/main/contrib/python/agent-skills-tutorial](https://github.com/google/adk-recipes/tree/main/contrib/python/agent-skills-tutorial)
+* [https\://medium.com/google-cloud/real-time-audio-to-audio-streaming-with-googles-multimodal-live-api-73b54277b022](https://medium.com/google-cloud/real-time-audio-to-audio-streaming-with-googles-multimodal-live-api-73b54277b022)
+* [https\://adk.dev/integrations/copilotkit/](https://adk.dev/integrations/copilotkit/)
+* [https\://agentdirectory.folch.ai/agents/adk\_agent\_builder](https://agentdirectory.folch.ai/agents/adk_agent_builder)
+* [https\://firebase.google.com/docs/ai-logic/models](https://firebase.google.com/docs/ai-logic/models)
 
 ## 4\. Multi-Agent System & Hybrid Architecture
 
@@ -106,21 +104,21 @@ The application decouples real-time conversation from background data analysis t
 
 ### 4.1 Hybrid Inference Model
 
-* **On-Device Local Inference (Prompt API):** Handles lightweight conversational routing, PII masking, local UI state transitions, and immediate pre-loaded prompt rendering on the phone without network latency .  
-* **Cloud Inference (Gemma / Gemini Models):** Executes complex background reasoning, multi-period anomaly auditing, and cross-category trend synthesis on Google Cloud via Firebase AI Logic .  
+* **On-Device Local Inference (Prompt API):** Handles lightweight conversational routing, PII masking, local UI state transitions, and immediate pre-loaded prompt rendering on the phone without network latency .
+* **Cloud Inference (Gemma / Gemini Models):** Executes complex background reasoning, multi-period anomaly auditing, and cross-category trend synthesis on Google Cloud via Firebase AI Logic .
 * **Multimodal Voice (Gemini Live API):** Powers real-time, low-latency, bi-directional voice streaming over WebSockets for hands-free financial coaching .
 
 ### 4.2 Agent Roles & Deterministic Math Guardrail
 
-1. **Auditor Agent (Asynchronous Data & Anomaly Layer):**  
-   * **Function:** Runs background analysis across raw transaction streams over structured recency timeframes (*This Week*, *This Pay Cycle*, *Last 30 Days*, *This Quarter*, *6 Months*, *YTD*) .  
-   * **Deterministic Guardrail:** Operates through pure Python code tools to compute metrics, spend spikes, category shifts, and recurring charges . **The LLM is strictly prohibited from performing arithmetic** .  
-2. **Curation & Prompt Agent (NotebookLM Engine):**  
-   * **Function:** Ingests the top 10 mathematically verified facts from the Auditor Agent alongside the user's active onboarding goals .  
-   * **Meta-Prompt Logic:** Applies ranking and contextual translation logic to select the **3 most impactful anomalies** aligned with the user's focus, framing them as clickable, zero-jargon suggested question chips .  
-3. **Translation & Conversational Agent (User-Facing Q\&A Layer):**  
-   * **Function:** Activates when the user taps a prompt chip, types a question, or speaks directly to the app .  
-   * **Multimodal Voice Integration:** Uses the **Gemini Live API** to allow users to ask about their finances conversationally via voice .  
+1. **Auditor Agent (Asynchronous Data & Anomaly Layer):**
+   * **Function:** Runs background analysis across raw transaction streams over structured recency timeframes (*This Week*, *This Pay Cycle*, *Last 30 Days*, *This Quarter*, *6 Months*, *YTD*) .
+   * **Deterministic Guardrail:** Operates through pure Python code tools to compute metrics, spend spikes, category shifts, and recurring charges . **The LLM is strictly prohibited from performing arithmetic** .
+2. **Curation & Prompt Agent (NotebookLM Engine):**
+   * **Function:** Ingests the top 10 mathematically verified facts from the Auditor Agent alongside the user's active onboarding goals .
+   * **Meta-Prompt Logic:** Applies ranking and contextual translation logic to select the **3 most impactful anomalies** aligned with the user's focus, framing them as clickable, zero-jargon suggested question chips .
+3. **Translation & Conversational Agent (User-Facing Q\&A Layer):**
+   * **Function:** Activates when the user taps a prompt chip, types a question, or speaks directly to the app .
+   * **Multimodal Voice Integration:** Uses the **Gemini Live API** to allow users to ask about their finances conversationally via voice .
    * **Jargon Removal & Actionability:** Converts ambiguous merchant strings (e.g., `SQ *CAFE NEWTOWN` or `UBER *EATS PENDING`) into human context, handles edge cases (refunds, split bills), and triggers inline visual charts .
 
 ---
@@ -131,26 +129,26 @@ To ensure strict compliance, high trust, and zero LLM arithmetic hallucination, 
 
 ### 5.1 Privacy & Anonymization Boundary
 
-* **Local PII Scrubbing:** Before any transaction data is passed to cloud LLM endpoints, merchant string obfuscation, account number masking, and sensitive PII scrubbing occur locally in Python .  
+* **Local PII Scrubbing:** Before any transaction data is passed to cloud LLM endpoints, merchant string obfuscation, account number masking, and sensitive PII scrubbing occur locally in Python .
 * **Data Isolation:** User bank data is strictly pass-through and private, stored securely in Firebase Firestore with user-scoped security rules, and never used to train external public foundation models .
 
 ### 5.2 The 10-Fact Deterministic Anomaly Catalog
 
-High level examples, not prescriptive. Best to scope to happy paths or simple flows for prototype purposes, then iterate.  
+High level examples, not prescriptive. Best to scope to happy paths or simple flows for prototype purposes, then iterate.
 The Auditor Engine executes a catalog of pure Python scripts to generate a structured JSON payload containing exactly 10 "Verified Facts" :
 
-* Fact 1–2: Current week vs. 4-week category velocity deltas .  
-* Fact 3–4: Pay cycle cash flow margin & runway calculations .  
-* Fact 5–6: Recurring billing detection & frequency checks .  
-* Fact 7–8: Multi-month seasonal comparisons (Quarterly / 6-Month) .  
+* Fact 1–2: Current week vs. 4-week category velocity deltas .
+* Fact 3–4: Pay cycle cash flow margin & runway calculations .
+* Fact 5–6: Recurring billing detection & frequency checks .
+* Fact 7–8: Multi-month seasonal comparisons (Quarterly / 6-Month) .
 * Fact 9–10: YTD milestone progress & net buffer growth .
 
 ### 5.3 Data Ingestion Abstraction
 
-* **Development Mode:** Synthetic CSV ingestion pipeline for zero-latency local development and offline agent testing .  
-* **Hackathon Prototype:** Direct REST API ingestion via BankSync (`https://api.banksync.io/v1`) using developer workspace API keys (`X-API-Key`), retrieving live pre-normalized accounts and transactions (`GET /v1/accounts`, `GET /v1/transactions`) .  
-* **Production Scaling Roadmap:**  Redbark and BankSync are consumer facing services, you can talk to individual subscriptions but not handle accounts of others. For scale we could consider:   
-  * BankSync/Redbark higher tiers like Professional, Business	or Enterprise.  
+* **Development Mode:** Synthetic CSV ingestion pipeline for zero-latency local development and offline agent testing .
+* **Hackathon Prototype:** Direct REST API ingestion via BankSync (`https://api.banksync.io/v1`) using developer workspace API keys (`X-API-Key`), retrieving live pre-normalized accounts and transactions (`GET /v1/accounts`, `GET /v1/transactions`) .
+* **Production Scaling Roadmap:**  Redbark and BankSync are consumer facing services, you can talk to individual subscriptions but not handle accounts of others. For scale we could consider:
+  * BankSync/Redbark higher tiers like Professional, Business or Enterprise.
   * Consider the task of Transitioning to Accredited Data Recipient (ADR) Open Banking rails (Basiq / Frollo) for compliant multi-tenant consumer account linking via native OAuth consent widgets.
 
 ---
@@ -161,8 +159,8 @@ The Auditor Engine executes a catalog of pure Python scripts to generate a struc
 
 To eliminate poor voice UX (such as reading long lists, raw ledgers, or complex tables aloud), the Gemini Live API session operates under strict system instructions :
 
-* **Brevity Cap:** Spoken responses must be concise, capped at 2–3 sentences .  
-* **No Spoken Tables:** The model must NEVER attempt to speak tabular data, charts, lists over 3-5 items, or granular transaction strings .  
+* **Brevity Cap:** Spoken responses must be concise, capped at 2–3 sentences .
+* **No Spoken Tables:** The model must NEVER attempt to speak tabular data, charts, lists over 3-5 items, or granular transaction strings .
 * **Visual Offloading:** When numbers or multi-category breakdowns are requested, the model speaks a brief confirmation and offloads the visual data to the screen .
 
 ### 6.2 WebSocket Function Calling Contract (`render_visual_card`)
@@ -171,7 +169,7 @@ When the user asks for a detailed breakdown verbally mid-walk (*"Show me my take
 
 ![][image2]
 
-* **Audio Confirmation:** Gemini speaks: *"I've popped that breakdown onto your screen so you can check it out whenever you're ready."*   
+* **Audio Confirmation:** Gemini speaks: *"I've popped that breakdown onto your screen so you can check it out whenever you're ready."*
 * **UI Action:** The Flutter client catches the WebSocket event and dynamically renders an inline visual chart widget on screen .
 
 ### 6.3 Dual-Mode State Sync
@@ -186,8 +184,8 @@ Session state, active chat history, and pre-computed audit facts are stored in F
 
 ### 7.1 Rationale for a Grade 6–8 Baseline
 
-* **Mass-Market Plain Language Standard:** Established guidelines across health, policy, and fintech advocate for Grade 6–8 readability to ensure effortless comprehension for Australia’s 13.3 million everyday consumers ("Jane and John User") .  
-* **Early Adopters vs. Everyday Mass-Market:** While current LLM interaction data shows Australian users average **11.9 years of education** in prompt complexity, this reflects tech-savvy early adopters rather than everyday users grappling with dense financial jargon .  
+* **Mass-Market Plain Language Standard:** Established guidelines across health, policy, and fintech advocate for Grade 6–8 readability to ensure effortless comprehension for Australia’s 13.3 million everyday consumers ("Jane and John User") .
+* **Early Adopters vs. Everyday Mass-Market:** While current LLM interaction data shows Australian users average **11.9 years of education** in prompt complexity, this reflects tech-savvy early adopters rather than everyday users grappling with dense financial jargon .
 * **Low Cognitive Friction Under Stress:** Financial stress reduces mental bandwidth . Clear, Grade 6–8 explanations allow any user to instantly process insights on the go or during quick voice updates .
 
 ### 7.2 Readability Evals & Validation Framework
@@ -219,17 +217,17 @@ Maintain a Python blocklist of prohibited financial jargon to automatically rout
 
 Execute continuous CI/CD evaluation test suites using an LLM judge (e.g., Gemini Flash) scored against a structured 1–5 quality rubric :
 
-1. **Jargon Elimination:** Evaluates if all transaction descriptions and concepts use warm, plain English .  
-2. **Reading Level Compliance:** Verifies text remains at or below an 8th-grade readability score .  
+1. **Jargon Elimination:** Evaluates if all transaction descriptions and concepts use warm, plain English .
+2. **Reading Level Compliance:** Verifies text remains at or below an 8th-grade readability score .
 3. **Cognitive Overhead:** Confirms core takeaway messages can be understood within 5 seconds .
 
 ### 7.3 Accessibility Acceptance Criteria
 
-* **Cognitive Accessibility (Readability Guardrails):** All conversational, text, and voice responses must be automatically validated to ensure they remain at or below a Grade 6–8 reading level (Flesch-Kincaid Grade Level 6.0–8.0, Flesch Reading Ease score 60–70+). Jargon and complex terminology are prohibited unless paired with plain-English definitions.  
-* **Visual Accessibility (High Contrast & Screen Readers):** UI layouts and card components must strictly maintain screen-reader-friendly natural language summaries, WCAG AAA high-contrast text styling, and clear semantic structure for visual elements and rendered charts.  
+* **Cognitive Accessibility (Readability Guardrails):** All conversational, text, and voice responses must be automatically validated to ensure they remain at or below a Grade 6–8 reading level (Flesch-Kincaid Grade Level 6.0–8.0, Flesch Reading Ease score 60–70+). Jargon and complex terminology are prohibited unless paired with plain-English definitions.
+* **Visual Accessibility (High Contrast & Screen Readers):** UI layouts and card components must strictly maintain screen-reader-friendly natural language summaries, WCAG AAA high-contrast text styling, and clear semantic structure for visual elements and rendered charts.
 * **Physical Accessibility (Hands-Free Gemini Live Voice Interaction):** The app must support fully hands-free, bi-directional voice interaction via the Gemini Live API. Spoken responses are capped at 2–3 concise sentences without reading long multi-item lists or dense numeric tables aloud, offloading structured visual details to screen cards instead.
 
-## 
+##
 
 ## 8\. Example prompts
 
@@ -255,40 +253,39 @@ Here are some prompts I have asked a CSV export in the past.
 
 * ## what is the average monthly spend at bars, liquor stores and entertainment venues
 
-* ## Describe my spending habits and make recommendations/suggestions.
+* ## Describe my spending habits and make recommendations/suggestions
 
-## 
+##
 
-## 9\. Downstream Task Generation Blueprint
+## 9\. [Draft] Downstream Task Generation Blueprint
 
-Phase 0: Start building to feel what’s possible
+[x] Phase 0: Start building to feel what’s possible
 
-* Choose a Flutter or Android Template  
-* Get it to run and understand the quirks and constraints  
+* Choose a Android Sample Project
+* Get it to run and understand the quirks and constraints
 * Decide if we need to port from an existing template or start from scratch
-
 
 This PRD establishes the ground truth for breaking engineering work down into 4 distinct implementation domains:
 
-├── Domain A: Flutter or Android & Firebase AI Logic (UI & Voice)  
-│   ├── \[ \] Build Flutter home shell with 3 proactive prompt card widgets  
-│   ├── \[ \] Connect Firebase AI Logic SDK & Gemini Live WebSocket stream  
-│   ├── \[ \] Implement \`render\_visual\_card\` client handler for inline charts  
-│   └── \[ \] Build voice/text mode toggle with state persistence in Firestore  
-│  
-├── Domain B: Python Auditor Engine & Privacy Boundary (Kaz – Data Engineer)  
-│   ├── \[ \] Build local PII scrubbing & merchant string normalization in Python  
-│   ├── \[ \] Code deterministic Python math catalog (10 Verified Facts generator)  
-│   ├── \[ \] Build BankSync REST API loader (\`GET /v1/accounts\`, \`GET /v1/transactions\`)  
-│   └── \[ \] Build synthetic CSV data generator for local development/testing  
-│  
-├── Domain C: Agentic Curation & Meta-Prompting (LLM Layer)  
-│   ├── \[ \] Implement Curation Agent meta-prompt (ranking 10 facts down to 3 chips)  
-│   ├── \[ \] Configure Gemini Live system instructions & voice persona constraints  
-│   └── \[ \] Build "What-If" scenario simulation prompt templates  
-│  
-└── Domain D: Cloud Deployment & Security (GCP / Firebase)  
-    ├── \[ \] Deploy Python Auditor endpoints to Cloud Functions for Firebase  
+├── Domain A: Android & Firebase AI Logic (UI & Voice)
+│   ├── \[ \] Build home shell with 3 proactive prompt card widgets
+│   ├── \[ \] Connect Firebase AI Logic SDK & Gemini Live WebSocket stream
+│   ├── \[ \] Implement \`render\_visual\_card\` client handler for inline charts
+│   └── \[ \] Build voice/text mode toggle with state persistence in Firestore
+│
+├── Domain B: Python Auditor Engine & Privacy Boundary (Kaz – Data Engineer)
+│   ├── \[ \] Build local PII scrubbing & merchant string normalization in Python
+│   ├── \[ \] Code deterministic Python math catalog (10 Verified Facts generator)
+│   ├── \[ \] Build BankSync REST API loader (\`GET /v1/accounts\`, \`GET /v1/transactions\`)
+│   └── \[ \] Build synthetic CSV data generator for local development/testing
+│
+├── Domain C: Agentic Curation & Meta-Prompting (LLM Layer)
+│   ├── \[ \] Implement Curation Agent meta-prompt (ranking 10 facts down to 3 chips)
+│   ├── \[ \] Configure Gemini Live system instructions & voice persona constraints
+│   └── \[ \] Build "What-If" scenario simulation prompt templates
+│
+└── Domain D: Cloud Deployment & Security (GCP / Firebase)
+    ├── \[ \] Deploy Python Auditor endpoints to Cloud Functions for Firebase
     ├── \[ \] Configure Firebase App Check & Firestore security rules
 
 ---
@@ -303,10 +300,10 @@ This PRD establishes the ground truth for breaking engineering work down into 4 
 
 The hackathon makes the following suggestions:
 
-**Suggested Solution Directions**  
+**Suggested Solution Directions**
 Fraud detection, transaction anomaly analysis, document intelligence, financial assistance, personalized recommendations, compliance automation, risk assessment
 
-**Suggested Google Cloud Technologies**  
+**Suggested Google Cloud Technologies**
 Gemini on Vertex AI for reasoning and conversational experiences, BigQuery for transaction and risk analytics, Vertex AI for predictive or classification models, Document AI for financial and non-traditional documents, Vertex AI Search / Agent Search for policy and knowledge retrieval, Cloud Run for application services, Cloud SQL or AlloyDB for application data, Pub/Sub for event-driven transaction processing
 
 ## Proposed Stack \- v1

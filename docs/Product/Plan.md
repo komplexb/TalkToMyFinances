@@ -22,36 +22,7 @@ A loose timeline comes from the project organisers:
 
 With the aforementioned context in mind we need to create a plan to vertically slice work from the PRD to have a working prototype by Thursday, Oct 15.
 
-## Downstream Task Generation Blueprint
-
-[x] Phase 0: Start building to feel what’s possible
-
-* Choose a Flutter or Android Template
-* Get it to run and understand the quirks and constraints
-* Decide if we need to port from an existing template or start from scratch
-
-Copied from the PRD: Breaking engineering work down into 4 distinct implementation domains:
-
-├── Domain A: Flutter or Android & Firebase AI Logic (UI & Voice)
-│   ├── \[ \] Build Flutter home shell with 3 proactive prompt card widgets
-│   ├── \[ \] Connect Firebase AI Logic SDK & Gemini Live WebSocket stream
-│   ├── \[ \] Implement \`render\_visual\_card\` client handler for inline charts
-│   └── \[ \] Build voice/text mode toggle with state persistence in Firestore
-│
-├── Domain B: Python Auditor Engine & Privacy Boundary (Kaz – Data Engineer)
-│   ├── \[ \] Build local PII scrubbing & merchant string normalization in Python
-│   ├── \[ \] Code deterministic Python math catalog (10 Verified Facts generator)
-│   ├── \[ \] Build BankSync REST API loader (\`GET /v1/accounts\`, \`GET /v1/transactions\`)
-│   └── \[ \] Build synthetic CSV data generator for local development/testing
-│
-├── Domain C: Agentic Curation & Meta-Prompting (LLM Layer)
-│   ├── \[ \] Implement Curation Agent meta-prompt (ranking 10 facts down to 3 chips)
-│   ├── \[ \] Configure Gemini Live system instructions & voice persona constraints
-│   └── \[ \] Build "What-If" scenario simulation prompt templates
-│
-└── Domain D: Cloud Deployment & Security (GCP / Firebase)
-    ├── \[ \] Deploy Python Auditor endpoints to Cloud Functions for Firebase
-    ├── \[ \] Configure Firebase App Check & Firestore security rules
+---
 
 Phase 0 is complete. We have a working prototype of the FriendlyMeals-Android sample project running on our local machines and wired up to our Firebase project instance. We have also decided to commit to Native Android for our prototype, "Talk to My Finances."
 
@@ -74,9 +45,9 @@ Basically build the UI for the backend to drive, and in the mean time we just ta
 
 ---
 Updated route
-/setup-matt-pocock-skills: use GitHub Issues so you and Kaz share one board.
-/grill-with-docs with Kaz, or /to-questionnaire first, to settle the Firestore fact contract and write it up as an ADR.
-/to-spec, then /to-tickets. Tickets fall out naturally on either side of the contract:
+[x] /setup-matt-pocock-skills: use GitHub Issues so you and Kaz share one board.
+[x] /grill-with-docs with Kaz, or /to-questionnaire first, to settle the Firestore fact contract and write it up as an ADR.
+[ ] /to-spec, then /to-tickets. Tickets fall out naturally on either side of the contract:
 Yours: a hand-seeded facts document → 3 chips on the home screen → tap one → a Gemini answer that quotes fact fields → deployed. Then text chat, then voice, then render_visual_card.
 Kaz's: BankSync → scrub → auditor → writes the same document. Your tickets don't wait on his, because the seeded document has the same shape.
 /implement per ticket, or /implement-spec for the whole spec. Use /wizard for the Firebase and Cloud Run console steps so you can deploy on Sunday.
@@ -84,8 +55,41 @@ Kaz's: BankSync → scrub → auditor → writes the same document. Your tickets
 Kaz's 100 synthetic transactions are a good shared fixture: compute the facts for your seeded document from them, so the demo numbers match what his auditor will produce later
 ---
 
-the thread mentioned some ambiguity and pitched some questions to Kaz and myself.
-both kaz and I are noobs when it comes to android and firebase. we want the AI (you) to leverage the `/firebase-**` skills to wisely direct us according to our expressed intent in the [PRD_Talk_to_My_Finances.md](file;file:///Users/byronbuckley_1/Dev/projects/TalkToMyFinances/docs/Product/PRD_Talk_to_My_Finances.md) and the goals and constraints outlined in [docs](directory;file:///Users/byronbuckley_1/Dev/projects/TalkToMyFinances/docs)
+## Grill Me
 
-One clarification is that his synthetic transactions are wht we will use for the prototype, no authentication or talking to the real banksync.io.
-a real world setup would be user account + banksync auth to individual bank accounts. the prototype skips all of that and demonstrates the core functionality of the app with synthetic data.
+### 1-3
+
+[ ] Specs
+[ ] Tickets
+
+### Technical
+
+#### 4
+
+[ ] Specs
+[ ] Tickets
+
+#### 5
+
+[ ] Specs
+[ ] Tickets
+
+#### 6
+
+[ ] Specs
+[ ] Tickets
+
+#### 7
+
+[ ] Specs
+[ ] Tickets
+
+#### 8
+
+[ ] Specs
+[ ] Tickets
+
+#### 6
+
+[ ] Specs
+[ ] Tickets
