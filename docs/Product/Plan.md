@@ -61,25 +61,25 @@ Basically build the UI for the backend to drive, and in the mean time we just ta
 
 #### 5
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
 #### 6
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
 #### 7
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
 #### 8
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
-#### 6
+#### 9
 
-[ ] Specs
+[x] Specs
 [ ] Tickets

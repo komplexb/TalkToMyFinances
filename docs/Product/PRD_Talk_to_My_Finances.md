@@ -204,27 +204,31 @@ If initial model evaluations show vocabulary drift, enforce strict system prompt
 
 These strict prompt constraints will only be introduced if baseline model evaluations fail to meet readability targets .
 
-#### **7.2.2 Deterministic Validation (textstat / vale.sh)**
+#### **~~7.2.2 Deterministic Validation (textstat / vale.sh)~~**
 
-Incorporate an automated Python readability checking step within Cloud Run endpoints :
+~~Incorporate an automated Python readability checking step within Cloud Run endpoints :~~
 
-| `import textstat` `def validate_plain_english(text_output: str) -> bool:`     `grade = textstat.flesch_kincaid_grade(text_output)`     `# Reject or re-prompt if output exceeds Grade 8 reading level`     `return grade <= 8.0` |
-| :---- |
+~~| `import textstat` `def validate_plain_english(text_output: str) -> bool:`     `grade = textstat.flesch_kincaid_grade(text_output)`     `# Reject or re-prompt if output exceeds Grade 8 reading level`     `return grade <= 8.0` |~~
+~~| :---- |~~
 
-Maintain a Python blocklist of prohibited financial jargon to automatically route non-compliant responses through a simplification filter before displaying them to the user .
+~~Maintain a Python blocklist of prohibited financial jargon to automatically route non-compliant responses through a simplification filter before displaying them to the user .~~
 
-#### **7.2.3 Automated LLM Judge Pipeline**
+#### **7.2.2 Hybrid Inference Readability Fallback (New World)**
 
-Execute continuous CI/CD evaluation test suites using an LLM judge (e.g., Gemini Flash) scored against a structured 1–5 quality rubric :
+When a user makes a request via chat or voice, the cloud model makes a tool call to fetch data. The model then massages that tool call response into prose according to the system prompt. Finally, on-device AI logic judges the response for reading level compliance and rewrites it to a Grade 6-8 reading level before rendering, minimizing latency.
 
-1. **Jargon Elimination:** Evaluates if all transaction descriptions and concepts use warm, plain English .
-2. **Reading Level Compliance:** Verifies text remains at or below an 8th-grade readability score .
-3. **Cognitive Overhead:** Confirms core takeaway messages can be understood within 5 seconds .
+#### **~~7.2.3 Automated LLM Judge Pipeline~~**
+
+~~Execute continuous CI/CD evaluation test suites using an LLM judge (e.g., Gemini Flash) scored against a structured 1–5 quality rubric :~~
+
+~~1. **Jargon Elimination:** Evaluates if all transaction descriptions and concepts use warm, plain English .~~
+~~2. **Reading Level Compliance:** Verifies text remains at or below an 8th-grade readability score .~~
+~~3. **Cognitive Overhead:** Confirms core takeaway messages can be understood within 5 seconds .~~
 
 ### 7.3 Accessibility Acceptance Criteria
 
 * **Cognitive Accessibility (Readability Guardrails):** All conversational, text, and voice responses must be automatically validated to ensure they remain at or below a Grade 6–8 reading level (Flesch-Kincaid Grade Level 6.0–8.0, Flesch Reading Ease score 60–70+). Jargon and complex terminology are prohibited unless paired with plain-English definitions.
-* **Visual Accessibility (High Contrast & Screen Readers):** UI layouts and card components must strictly maintain screen-reader-friendly natural language summaries, WCAG AAA high-contrast text styling, and clear semantic structure for visual elements and rendered charts.
+* **~~Visual Accessibility (High Contrast & Screen Readers):~~** ~~UI layouts and card components must strictly maintain screen-reader-friendly natural language summaries, WCAG AAA high-contrast text styling, and clear semantic structure for visual elements and rendered charts.~~ *(Deferred for Prototype)*
 * **Physical Accessibility (Hands-Free Gemini Live Voice Interaction):** The app must support fully hands-free, bi-directional voice interaction via the Gemini Live API. Spoken responses are capped at 2–3 concise sentences without reading long multi-item lists or dense numeric tables aloud, offloading structured visual details to screen cards instead.
 
 ##
@@ -269,8 +273,6 @@ This PRD establishes the ground truth for breaking engineering work down.
 
 Phase 0 is complete. We have a working prototype of the FriendlyMeals-Android sample project running on our local machines and wired up to our Firebase project instance. We have also decided to commit to Native Android for our prototype, "Talk to My Finances."
 
-The 4 domains however aren't vertically sliced if we are thinking of vertical slices, as top down feature demonstrable feature. Also the 4 domains seems to miss much details from the PRD body.
-
 The chat and voice interfaces depend on the backend that Kaz is building out, so its not clear to me what the app would be talking to without the backend housing our apis/tool calls.
 
 I think for starters I can build out the UI and the firebase plumbing according to the designs:
@@ -285,6 +287,9 @@ I think for starters I can build out the UI and the firebase plumbing according 
 * Test
 
 Basically build the UI for the backend to drive, and in the mean time we just talk to the model as is, and stitch in our capabilities as they come online
+
+![Design sketch of Talk to My Finances](./DesignSketchedV2.jpeg)
+
 ---
 
 ## High Level Design
