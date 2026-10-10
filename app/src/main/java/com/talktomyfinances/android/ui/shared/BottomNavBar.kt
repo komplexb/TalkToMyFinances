@@ -6,48 +6,31 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.talktomyfinances.android.R
-import com.talktomyfinances.android.ui.generate.GenerateRoute
-import com.talktomyfinances.android.ui.groceryList.GroceryListRoute
-import com.talktomyfinances.android.ui.recipeList.RecipeListRoute
-import com.talktomyfinances.android.ui.scanMeal.ScanMealRoute
+import com.talktomyfinances.android.ui.chat.ChatRoute
+import com.talktomyfinances.android.ui.insights.InsightsRoute
 import com.talktomyfinances.android.ui.theme.Teal
 
 sealed class BottomNavItem(val route: Any, val icon: Int, val label: Int) {
-    object ScanMeal : BottomNavItem(ScanMealRoute, R.drawable.ic_camera, R.string.nav_bar_scan_meal)
-    object Generate : BottomNavItem(GenerateRoute, R.drawable.ic_generate, R.string.nav_bar_generate)
-    object RecipeList : BottomNavItem(RecipeListRoute, R.drawable.ic_dine, R.string.nav_bar_recipe_list)
-    object GroceryList : BottomNavItem(GroceryListRoute, R.drawable.ic_check, R.string.nav_bar_grocery_list)
+    object Insights : BottomNavItem(InsightsRoute, R.drawable.ic_generate, R.string.nav_bar_insights)
+    object Chat : BottomNavItem(ChatRoute(), R.drawable.ic_serving, R.string.nav_bar_chat)
 }
 
+/** Two-screen flow per ADR 0002: Home/Insights and Chat. */
 @Composable
-fun BottomNavBar(navigateTo: (Any) -> Unit) {
-    var selectedItemIndex by remember { mutableIntStateOf(1) }
-
-    val items = listOf(
-        BottomNavItem.ScanMeal,
-        BottomNavItem.Generate,
-        BottomNavItem.RecipeList,
-        BottomNavItem.GroceryList
-    )
+fun BottomNavBar(selectedIndex: Int, navigateTo: (Any) -> Unit) {
+    val items = listOf(BottomNavItem.Insights, BottomNavItem.Chat)
 
     NavigationBar {
         items.forEachIndexed { index, item ->
             val label = stringResource(item.label)
 
             NavigationBarItem(
-                selected = selectedItemIndex == index,
-                onClick = {
-                    selectedItemIndex = index
-                    navigateTo(item.route)
-                },
+                selected = selectedIndex == index,
+                onClick = { navigateTo(item.route) },
                 icon = { Icon(
                     painter = painterResource(item.icon),
                     contentDescription = label
