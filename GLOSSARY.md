@@ -35,3 +35,11 @@ _Avoid_: Chat view, live screen
 **Hybrid Inference**:
 The mechanism used during the Custom Question Loop where the Android app orchestrates an HTTP call to the Python Engine for data, and then uses Firebase AI Logic on-device to rewrite the returned text to a Grade 6-8 reading level, minimizing latency.
 _Avoid_: Local rewriting, fallback generation
+
+**Parser-Spec-Compute**:
+The architectural pattern for out-of-catalog financial queries where an LLM (Intent Parser) maps a user query into a structured `FinancialQuerySpec`, which is then executed deterministically by the Auditor Engine.
+_Avoid_: On-the-fly code generation, prompt-based math
+
+**FinancialQuerySpec**:
+A strongly-typed schema (capturing target metric, entity inclusions/exclusions, temporal grain, and denominator policy) populated by the LLM and executed by the Auditor Engine.
+_Avoid_: JSON payload, function call args

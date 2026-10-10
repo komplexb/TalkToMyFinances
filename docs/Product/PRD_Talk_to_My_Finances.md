@@ -259,35 +259,32 @@ Here are some prompts I have asked a CSV export in the past.
 
 ## 9\. [Draft] Downstream Task Generation Blueprint
 
+This PRD establishes the ground truth for breaking engineering work down.
+
 [x] Phase 0: Start building to feel what’s possible
 
 * Choose a Android Sample Project
 * Get it to run and understand the quirks and constraints
 * Decide if we need to port from an existing template or start from scratch
 
-This PRD establishes the ground truth for breaking engineering work down into 4 distinct implementation domains:
+Phase 0 is complete. We have a working prototype of the FriendlyMeals-Android sample project running on our local machines and wired up to our Firebase project instance. We have also decided to commit to Native Android for our prototype, "Talk to My Finances."
 
-├── Domain A: Android & Firebase AI Logic (UI & Voice)
-│   ├── \[ \] Build home shell with 3 proactive prompt card widgets
-│   ├── \[ \] Connect Firebase AI Logic SDK & Gemini Live WebSocket stream
-│   ├── \[ \] Implement \`render\_visual\_card\` client handler for inline charts
-│   └── \[ \] Build voice/text mode toggle with state persistence in Firestore
-│
-├── Domain B: Python Auditor Engine & Privacy Boundary (Kaz – Data Engineer)
-│   ├── \[ \] Build local PII scrubbing & merchant string normalization in Python
-│   ├── \[ \] Code deterministic Python math catalog (10 Verified Facts generator)
-│   ├── \[ \] Build BankSync REST API loader (\`GET /v1/accounts\`, \`GET /v1/transactions\`)
-│   └── \[ \] Build synthetic CSV data generator for local development/testing
-│
-├── Domain C: Agentic Curation & Meta-Prompting (LLM Layer)
-│   ├── \[ \] Implement Curation Agent meta-prompt (ranking 10 facts down to 3 chips)
-│   ├── \[ \] Configure Gemini Live system instructions & voice persona constraints
-│   └── \[ \] Build "What-If" scenario simulation prompt templates
-│
-└── Domain D: Cloud Deployment & Security (GCP / Firebase)
-    ├── \[ \] Deploy Python Auditor endpoints to Cloud Functions for Firebase
-    ├── \[ \] Configure Firebase App Check & Firestore security rules
+The 4 domains however aren't vertically sliced if we are thinking of vertical slices, as top down feature demonstrable feature. Also the 4 domains seems to miss much details from the PRD body.
 
+The chat and voice interfaces depend on the backend that Kaz is building out, so its not clear to me what the app would be talking to without the backend housing our apis/tool calls.
+
+I think for starters I can build out the UI and the firebase plumbing according to the designs:
+
+* Settings
+* Onboarding
+* Chat UI
+* Voice Toggle
+* Find/Figure out a Material Design template
+* Configure the Hybrid Inferencing
+* Design the system prompts
+* Test
+
+Basically build the UI for the backend to drive, and in the mean time we just talk to the model as is, and stitch in our capabilities as they come online
 ---
 
 ## High Level Design

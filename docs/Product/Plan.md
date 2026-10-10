@@ -44,29 +44,19 @@ I think for starters I can build out the UI and the firebase plumbing according 
 Basically build the UI for the backend to drive, and in the mean time we just talk to the model as is, and stitch in our capabilities as they come online.
 
 ---
-Updated route
-[x] /setup-matt-pocock-skills: use GitHub Issues so you and Kaz share one board.
-[x] /grill-with-docs with Kaz, or /to-questionnaire first, to settle the Firestore fact contract and write it up as an ADR.
-[ ] /to-spec, then /to-tickets. Tickets fall out naturally on either side of the contract:
-Yours: a hand-seeded facts document → 3 chips on the home screen → tap one → a Gemini answer that quotes fact fields → deployed. Then text chat, then voice, then render_visual_card.
-Kaz's: BankSync → scrub → auditor → writes the same document. Your tickets don't wait on his, because the seeded document has the same shape.
-/implement per ticket, or /implement-spec for the whole spec. Use /wizard for the Firebase and Cloud Run console steps so you can deploy on Sunday.
-
-Kaz's 100 synthetic transactions are a good shared fixture: compute the facts for your seeded document from them, so the demo numbers match what his auditor will produce later
----
 
 ## Grill Me
 
 ### 1-3
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
 ### Technical
 
 #### 4
 
-[ ] Specs
+[x] Specs
 [ ] Tickets
 
 #### 5
