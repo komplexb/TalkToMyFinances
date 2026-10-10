@@ -16,3 +16,9 @@ google-services.json
 /build
 app/build
 local.properties
+
+# Python backend
+backend/.venv
+backend/.env
+__pycache__/
+.pytest_cache/
