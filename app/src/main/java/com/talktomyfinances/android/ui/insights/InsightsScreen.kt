@@ -12,7 +12,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,7 +91,7 @@ private fun LoadingSequence(openChat: (String?) -> Unit) {
     ) {
         CircularProgressIndicator()
         Crossfade(targetState = index, label = "loading") { Text(messages[it]) }
-        TextButton(onClick = { openChat(null) }, modifier = Modifier.testTag("skip_to_chat")) {
+        Button(onClick = { openChat(null) }, modifier = Modifier.testTag("skip_to_chat")) {
             Text(stringResource(R.string.insights_await_or_chat))
         }
     }

@@ -57,7 +57,7 @@ If the user asks you to add an ingredient or item to their grocery list or shopp
     </entry>
     <entry>
         <key>insights_base_url</key>
-        <value></value>
+        <value>http://127.0.0.1:8000</value>
     </entry>
     <entry>
         <key>classify_goal_prompt</key>

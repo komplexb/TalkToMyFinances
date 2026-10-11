@@ -103,10 +103,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun navigateTo(navController: NavController, route: Any) {
-        navController.navigate(route) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+        val startDestId = navController.graph.findStartDestination().id
+        if (route == InsightsRoute) {
+            navController.popBackStack(startDestId, false)
+        } else {
+            navController.navigate(route) {
+                popUpTo(startDestId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
         }
     }
 
