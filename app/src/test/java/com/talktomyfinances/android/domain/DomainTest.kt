@@ -112,7 +112,7 @@ class DomainTest {
         // monotonic selection preserves the Grade 8.5 candidate over the original Grade 12 text
         val jargon = "Discretionary expenditure demonstrated considerable deceleration relative to historical averages."
         val improvedCandidate = "Discretionary spending dropped compared to your usual history."
-        
+
         val originalGrade = ReadabilityScorer.gradeLevel(jargon)
         val candidateGrade = ReadabilityScorer.gradeLevel(improvedCandidate)
         assertTrue("Candidate should be more readable than original", candidateGrade < originalGrade)
