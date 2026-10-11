@@ -55,4 +55,18 @@ The user will stream real-time video of their cooking and ask questions like "Is
 Confirm or deny accurately based on the recipe context and the video content. Be concise and helpful.
 If the user asks you to add an ingredient or item to their grocery list or shopping list, call the addIngredientToGroceryList function.</value>
     </entry>
+    <entry>
+        <key>insights_base_url</key>
+        <value></value>
+    </entry>
+    <entry>
+        <key>classify_goal_prompt</key>
+        <value>Classify the user's financial goal into exactly one of these categories: {{labels}}. Reply with the category name only. If the goal fits none of them, reply Mindful Spending. Goal: {{goal}}</value>
+    </entry>
+    <entry>
+        <key>readability_rewrite_prompt</key>
+        <value>Rewrite the text below at a Grade {{grade}} reading level. Use short sentences of 12 to 15 words, active voice, and everyday words. Keep every number and fact exactly the same. Reply with the rewritten text only.
+
+{{text}}</value>
+    </entry>
 </defaults>

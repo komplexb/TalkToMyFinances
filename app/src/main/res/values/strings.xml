@@ -81,4 +81,20 @@
     <string name="recipe_pairing_playing">Playing pairing guide • Tap to pause</string>
     <string name="recipe_pairing_paused">Paused • Tap to resume</string>
     <string name="recipe_pairing_retry">Error playing audio • Tap to retry</string>
+    <string name="nav_bar_insights">Insights</string>
+    <string name="nav_bar_chat">Chat</string>
+    <string name="chat_title">Tête-à-Tête Chat</string>
+    <string name="onboarding_goal_title">What matters most to you right now?</string>
+    <string name="onboarding_goal_other">Something else</string>
+    <string name="onboarding_goal_other_hint">Tell us your goal</string>
+    <string name="onboarding_pay_title">When do you get paid?</string>
+    <string name="onboarding_next_pay_date">Next pay date (yyyy-mm-dd)</string>
+    <string name="onboarding_next">Next</string>
+    <string name="insights_await_or_chat">Await insights or go straight to chat</string>
+    <string-array name="insights_loading_messages">
+        <item>Looking at your spending…</item>
+        <item>Checking your pay cycle…</item>
+        <item>Finding your wins…</item>
+        <item>Almost there…</item>
+    </string-array>
 </resources>
