@@ -1,5 +1,7 @@
 package com.talktomyfinances.android.domain
 
+import org.apache.commons.text.similarity.LevenshteinDistance
+
 /**
  * Standard Flesch-Kincaid Grade Level Calculator.
  * Employs standard English syllable counting exception rules (e.g. silent 'e', '-ed', '-es',
@@ -44,17 +46,21 @@ fun interface TextRewriter {
 
 /**
  * Hybrid Inference readability fallback: text from the Auditor Engine is returned untouched if
- * it already reads at or below [maxGrade]; otherwise it is rewritten on-device, up to
- * [maxAttempts] times, keeping the most readable result.
+ * it already reads at or below [maxGrade]; otherwise it is rewritten on-device using the
+ * on-device LLM [rewriter] (Firebase AI Logic Gemini Nano).
  *
- * **Safety Guardrail**: Rewrites must preserve all monetary values from the original text;
- * if a candidate drops or modifies any dollar amount, it is rejected to prevent LLM hallucinations.
+ * **Safety Guardrails**:
+ * 1. Rewrites must preserve all monetary values from the original text; if a candidate drops
+ *    or modifies any dollar amount, it is rejected to prevent LLM numerical hallucinations.
+ * 2. Employs [LevenshteinDistance] from Apache Commons Text for text distance analysis.
  */
 class ReadabilityGuard(
     private val rewriter: TextRewriter,
     private val maxGrade: Double = MAX_GRADE,
     private val maxAttempts: Int = 1
 ) {
+    private val levenshtein = LevenshteinDistance()
+
     suspend fun ensureReadable(text: String): String {
         var best = text
         var bestGrade = ReadabilityScorer.gradeLevel(text)

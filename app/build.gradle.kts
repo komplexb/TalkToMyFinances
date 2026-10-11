@@ -74,6 +74,7 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.perf)
     implementation(libs.play.services.location)
+    implementation(libs.commons.text)
 
     //Library to handle Markdown in Compose
     implementation(libs.richtext.commonmark)

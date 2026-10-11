@@ -75,21 +75,21 @@ class DomainTest {
 
     @Test
     fun guardRejectsRewriteWhenNumbersAreDropped() = runBlocking {
-        val jargonWithNumbers = "Discretionary expenditure demonstrated $140 deceleration in Q3."
-        val rewriterDroppedNumber = "You spent less in Q3."
+        val jargonWithNumbers = "Discretionary expenditure demonstrated $140 deceleration."
+        val rewriterDroppedNumber = "You spent less overall."
         val guard = ReadabilityGuard({ _, _ -> rewriterDroppedNumber })
-        
-        // Should reject the rewrite because $140 was dropped, returning original jargon text
+
+        // Should reject rewrite because $140 was dropped, returning original jargon text
         assertEquals(jargonWithNumbers, guard.ensureReadable(jargonWithNumbers))
     }
 
     @Test
     fun guardAcceptsRewriteWhenNumbersArePreserved() = runBlocking {
-        val jargonWithNumbers = "Discretionary expenditure demonstrated $140 deceleration in Q3."
+        val jargonWithNumbers = "Discretionary expenditure demonstrated $140 deceleration."
         val rewriterPreservedNumber = "You saved $140 this quarter."
         val guard = ReadabilityGuard({ _, _ -> rewriterPreservedNumber })
 
-        // Should accept the rewrite because $140 is preserved
+        // Should accept rewrite because $140 is preserved
         assertEquals(rewriterPreservedNumber, guard.ensureReadable(jargonWithNumbers))
     }
 }
