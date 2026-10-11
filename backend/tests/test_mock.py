@@ -1,5 +1,6 @@
 import copy
 import json
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -11,8 +12,12 @@ from banksync.banksync_client import BankSyncClient
 from mock_banksync.main import MOCK_KEY, TRANSACTIONS, app
 
 PATH = "/v1/banks/demo/accounts/spending/transactions"
-DATES = {"from": "2026-07-01", "to": "2026-09-30"}
 ROOT = Path(__file__).resolve().parents[1]
+# The dataset is generated (mock_banksync/data/generate.py) and anchored to its
+# --as-of date, so test windows and row counts are derived from it rather than
+# hardcoding a point in time.
+ALL = sorted(TRANSACTIONS, key=lambda row: (row["date"], row["id"]))
+DATES = {"from": ALL[0]["date"], "to": ALL[-1]["date"]}
 
 
 @pytest.fixture
@@ -39,27 +44,31 @@ def test_all_pages_match_saved_data_and_schema(client):
     params = copy.copy(DATES)
     rows = []
     pages = 0
+    remaining = len(TRANSACTIONS)
     while True:
         response = client.get(PATH, params=params)
         assert response.status_code == 200
         body = response.json()
         validator.validate(body)
-        assert body["meta"]["count"] == len(body["data"]) == 25
+        page_size = min(25, remaining)
+        assert body["meta"]["count"] == len(body["data"]) == page_size
+        remaining -= page_size
         rows.extend(body["data"])
         pages += 1
         if not body["meta"]["hasMore"]:
             assert body["meta"]["cursor"] is None
             break
         params["cursor"] = body["meta"]["cursor"]
-    assert pages == 4
-    assert rows == sorted(TRANSACTIONS, key=lambda row: (row["date"], row["id"]))
-    assert len({row["id"] for row in rows}) == 100
+    assert pages == (len(TRANSACTIONS) + 24) // 25
+    assert rows == ALL
+    assert len({row["id"] for row in rows}) == len(TRANSACTIONS)
     assert client.get(PATH, params=DATES).json() == client.get(PATH, params=DATES).json()
 
 
 def test_date_boundaries_and_empty_period(client):
-    body = client.get(PATH, params={"from": "2026-07-01", "to": "2026-07-01"}).json()
-    assert body["data"] and all(row["date"] == "2026-07-01" for row in body["data"])
+    single = ALL[0]["date"]
+    body = client.get(PATH, params={"from": single, "to": single}).json()
+    assert body["data"] and all(row["date"] == single for row in body["data"])
     body = client.get(PATH, params={"from": "2020-01-01", "to": "2020-01-31"}).json()
     assert body["data"] == []
     assert body["meta"]["count"] == 0
@@ -89,7 +98,8 @@ def test_cursor_rejects_invalid_token_and_changed_dates(client):
     for token in ("bad cursor", ""):
         assert client.get(PATH, params={**DATES, "cursor": token}).status_code == 400
     cursor = client.get(PATH, params=DATES).json()["meta"]["cursor"]
-    response = client.get(PATH, params={**DATES, "from": "2026-07-02", "cursor": cursor})
+    next_day = (date.fromisoformat(DATES["from"]) + timedelta(days=1)).isoformat()
+    response = client.get(PATH, params={**DATES, "from": next_day, "cursor": cursor})
     assert response.status_code == 400
 
 
@@ -98,7 +108,7 @@ def test_client_reads_all_pages(client):
     adapter.close()
     adapter.http = client
     rows = adapter.transactions(DATES["from"], DATES["to"])
-    assert len(rows) == 100
+    assert len(rows) == len(TRANSACTIONS)
 
 
 def test_client_surfaces_auth_failure():
