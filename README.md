@@ -149,5 +149,36 @@ If you are setting up a brand-new Firebase project from scratch for **Talk to My
 
 ---
 
+## 🚢 How to Deploy to Production
+
+When launching **Talk to My Finances** to production, follow these steps to deploy the backend resources, security rules, and production configurations:
+
+### 1. Deploy Firebase Security Rules & Storage Config
+Deploy the Firestore security rules (`firestore.rules`) and Cloud Storage rules (`storage.rules`) to your production project:
+```sh
+npx -y firebase-tools@latest deploy --only firestore:rules,storage --project <PROD_PROJECT_ID>
+```
+
+### 2. Deploy Cloud Run Python Backend
+Build and deploy the Python Auditor & Curation backend (`backend/`) using Google Cloud Build:
+```sh
+gcloud builds submit backend \
+  --config backend/cloudbuild.yaml \
+  --substitutions _MOCK_KEY=$(openssl rand -hex 16)
+```
+After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
+
+### 3. Update Firebase Remote Config for Production
+Set the production backend URL in the Firebase Console or via Remote Config template:
+- Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
+- Set parameter `insights_base_url` to your live Cloud Run URL (`https://ttmf-auditor-backend-abc123.a.run.app`).
+- Publish the changes. (Mobile clients will dynamically fetch this URL on startup).
+
+### 4. Enforce App Check in Production
+1. Ensure your production APK/AAB signing certificate fingerprint (SHA-256) is registered under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
+2. Switch App Check enforcement mode from **Unenforced / Monitoring** to **Enforced** for Firestore, Storage, and AI Logic to block unauthorized API requests.
+
+---
+
 ## 📄 License
 Licensed under the Apache License 2.0.
