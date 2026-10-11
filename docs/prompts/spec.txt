@@ -6,6 +6,7 @@ when unclear read:
 - the specs and open issues: https://github.com/komplexb/TalkToMyFinances/issues
 when ambiguous the spec(s) supercedes the prd as they are derived from the prd then refined
 
+- Avoid handrolling solutions that can be solved by an established library: before writing custom algorithms, complex regex, parsing logic, or scoring/math heuristics (e.g., text readability, date/time math, image rendering, or schema validation), check Maven Central/PyPI for battle-tested libraries. Prefer an established library whenever custom code would require managing edge cases or fragile rules.
 - make sure to make appropriate tests for the features developed, run existing tests at the end of your dev cycle to make sure you don't introduce a regression
 - add/extend a how to deploy section that outlines the steps needed for the implemented spec to work in prod; whether firebase-tools, firebase console actions, etc
 
