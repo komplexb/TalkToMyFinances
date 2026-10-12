@@ -9,12 +9,6 @@ metadata:
 
 # User-facing changelog
 
-## Repo context (auto-loaded)
-
-- Current branch: !`git branch --show-current`
-- Merge-base with develop:
-  !`git fetch origin develop 2>/dev/null; git merge-base origin/develop HEAD 2>/dev/null || git merge-base develop HEAD`
-
 PR descriptions on this repo open with a "User facing changelog" section. Reviewers and release captains skim
 this section first to understand scope. The goal of this skill is to produce a short, scannable changelog — written so
 someone who hasn't seen the code can follow it — that answers four questions in order: **what**, **why**, **limitations
@@ -68,8 +62,7 @@ else in the template is always present, even when the content is short (`Breakin
   needed (the bug, the constraint, the ticket), not the mechanism — if it's a follow-up to another ticket/PR, name it by
   ID.
 - **Bullet-per-capability once a section covers 2+ distinct things.** This applies to every section — What, Why,
-  Limitations, Breaking change alike. A single capability or reason still reads as a plain prose paragraph (see the
-  worked example below). Once a section would otherwise merge two or more distinct capabilities/reasons/limitations into
+  Limitations, Breaking change alike. A single capability or reason still reads as a plain prose paragraph. Once a section would otherwise merge two or more distinct capabilities/reasons/limitations into
   one paragraph, switch to a bullet list instead — one full sentence (or two) per bullet, each still following the
   "prose, not fragments" rule; a fragment inside a bullet is still a fragment. Use a nested sub-bullet only for a
   supporting detail of the bullet above it (e.g. naming the specific starter cases seeded), not as a way to cram in
@@ -90,22 +83,6 @@ else in the template is always present, even when the content is short (`Breakin
 - **ASCII punctuation only.** Never use em dashes, en dashes, or curly/smart quotes anywhere in the four sections. Use a
   plain hyphen (`-`) and straight quotes (`'`, `"`) only.
 
-## Worked example (an accessibility fix)
-
-```markdown
-### What
-
-Adding an item to a collection is now announced reliably to screen-reader users. When you grow a collection — for example by selecting "Add another" — assistive technology such as VoiceOver consistently reads out that new questions have appeared on the page.
-
-### Why
-
-A follow-up to EX-3378, which first introduced these announcements. The announcement was always placed on the page, but VoiceOver often skipped it when a new item was added: selecting "Add another" briefly moved focus away at the moment the announcement was made, so the screen reader read whatever it landed on instead. The button now keeps its place while the item is added, so the announcement is heard. Nothing changes for sighted users, and the safeguard that stops a second item being added before the first finishes saving is still in place.
-
-### Breaking change
-
-None.
-```
-
 ## Sourcing the content
 
 If the conversation already contains the work (recent diffs, commit list, ticket context), draft from that — don't ask
@@ -118,7 +95,7 @@ the user to re-paste it. The "Repo context" section above already gives you the 
 2. **What** — use the merge-base SHA from Repo context above as `<base>` (don't re-derive it; that value already fetched
    `develop` and resolved the fallback). Read `git log --oneline <base>..HEAD` and `git diff --stat <base>..HEAD` across
    the _whole_ range to identify the affected areas. Group by directory or feature rather than listing files.
-3. **Why** — prefer the ticket description if available (read it via the Jira MCP if the ID is known), otherwise infer
+3. **Why** — prefer the ticket/issue description if available, otherwise infer
    from the predecessor PR / parent ticket referenced in commits.
 4. **Limitations** — scan for things in the affected areas that look related but weren't touched. These are usually
    known to you from the work itself; if not, a quick `grep` for the pattern being migrated will surface them.
