@@ -70,14 +70,15 @@ class RoutingAuditorRepository @Inject constructor(
             remoteConfig.getString("insights_base_url")
         }.trim()
 
-        if (baseUrl.isBlank()) {
-            return stub.compute(spec)
+        if (baseUrl.isNotBlank()) {
+            val cloudResult = CloudRunAuditorRepository(baseUrl).compute(spec)
+            if (cloudResult.isSuccess) {
+                return cloudResult
+            }
+            // Return the actual cloud failure so errors are visible rather than silently stubbed
+            return cloudResult
         }
 
-        val cloudResult = CloudRunAuditorRepository(baseUrl).compute(spec)
-        return cloudResult.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { stub.compute(spec) }
-        )
+        return stub.compute(spec)
     }
 }

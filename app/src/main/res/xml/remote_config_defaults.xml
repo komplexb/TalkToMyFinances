@@ -64,6 +64,10 @@ If the user asks you to add an ingredient or item to their grocery list or shopp
         <value>http://127.0.0.1:8000</value>
     </entry>
     <entry>
+        <key>auditor_base_url</key>
+        <value>http://127.0.0.1:8000</value>
+    </entry>
+    <entry>
         <key>classify_goal_prompt</key>
         <value>Classify the user's financial goal into exactly one of these categories: {{labels}}. Reply with the category name only. If the goal fits none of them, reply Mindful Spending. Goal: {{goal}}</value>
     </entry>
