@@ -134,6 +134,12 @@ def execute_spec_compute(spec: FinancialQuerySpec, transactions: List[Dict[str, 
 
     return AuditReceipt(summary=summary, value=round(val, 2), spec=spec)
 
+@app.post("/compute", response_model=AuditReceipt)
+def compute_spec(spec: FinancialQuerySpec) -> AuditReceipt:
+    """Computes deterministic math and Audit Receipt directly from a FinancialQuerySpec."""
+    txs = load_transactions()
+    return execute_spec_compute(spec, txs)
+
 @app.post("/query", response_model=AuditReceipt)
 def run_query(req: QueryRequest) -> AuditReceipt:
     """Parser-Spec-Compute endpoint for out-of-catalog financial math."""
