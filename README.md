@@ -141,9 +141,24 @@ If you are setting up a brand-new Firebase project from scratch for **Talk to My
 
 ---
 
-## 🏃 Running the App & Monitoring Logs
+## 🏃 Running the App Locally & Monitoring Logs
 
-1. Open the project in Android Studio and run `app` on an Android Emulator or connected physical device.
+### 1. Start the Local Backend Engine (Monorepo)
+To have the Android app communicate directly with the local Python Auditor engine over your live synthetic ledger:
+```sh
+cd backend
+uv run uvicorn auditor.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 2. Reverse Port Forwarding to Android Device/Emulator
+To allow the Android app running on an emulator or USB-connected physical phone to reach `http://127.0.0.1:8000` on your host Mac:
+```sh
+adb reverse tcp:8000 tcp:8000
+```
+*(Run this once whenever an emulator starts or after plugging in a physical device).*
+
+### 3. Launch App & Monitor Logs
+1. Open the project in Android Studio and run `app` on your Android Emulator or connected physical device.
 2. View real-time application logs in Android Studio **Logcat** using filter:
    `package:com.talktomyfinances.android level:error`
 
