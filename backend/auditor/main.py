@@ -58,7 +58,7 @@ def run_audit(req: AuditRequest) -> AuditResponse:
                 f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
             )
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=prompt,
             )
             if response.text:
@@ -158,7 +158,7 @@ def run_query(req: QueryRequest) -> AuditReceipt:
                 f"Return ONLY valid JSON."
             )
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=prompt,
             )
             if response.text:
