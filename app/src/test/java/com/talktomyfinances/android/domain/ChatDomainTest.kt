@@ -132,5 +132,68 @@ class ChatDomainTest {
 
         val withError = initial.copy(error = "Network timeout")
         assertEquals("Network timeout", withError.error)
+
+        val voiceMode = initial.copy(
+            inputMode = com.talktomyfinances.android.ui.chat.ChatInputMode.VOICE,
+            voiceState = VoiceState(status = VoiceSessionStatus.LISTENING)
+        )
+        assertEquals(com.talktomyfinances.android.ui.chat.ChatInputMode.VOICE, voiceMode.inputMode)
+        assertEquals(VoiceSessionStatus.LISTENING, voiceMode.voiceState.status)
+    }
+
+    @Test
+    fun voiceStateTransitionsAndDefaults() {
+        val defaultState = VoiceState()
+        assertEquals(VoiceSessionStatus.DISCONNECTED, defaultState.status)
+        assertEquals(false, defaultState.isMuted)
+        assertEquals("", defaultState.activeTranscript)
+        assertNull(defaultState.errorMessage)
+
+        val connecting = defaultState.copy(status = VoiceSessionStatus.CONNECTING)
+        assertEquals(VoiceSessionStatus.CONNECTING, connecting.status)
+
+        val listening = defaultState.copy(
+            status = VoiceSessionStatus.LISTENING,
+            activeTranscript = "how much on coffee"
+        )
+        assertEquals(VoiceSessionStatus.LISTENING, listening.status)
+        assertEquals("how much on coffee", listening.activeTranscript)
+
+        val speaking = defaultState.copy(
+            status = VoiceSessionStatus.SPEAKING,
+            activeTranscript = "You spent $42 on coffee this week."
+        )
+        assertEquals(VoiceSessionStatus.SPEAKING, speaking.status)
+
+        val muted = defaultState.copy(isMuted = true, status = VoiceSessionStatus.MUTED)
+        assertTrue(muted.isMuted)
+        assertEquals(VoiceSessionStatus.MUTED, muted.status)
+
+        val error = defaultState.copy(
+            status = VoiceSessionStatus.ERROR,
+            errorMessage = "Microphone permission required"
+        )
+        assertEquals(VoiceSessionStatus.ERROR, error.status)
+        assertEquals("Microphone permission required", error.errorMessage)
+    }
+
+    @Test
+    fun transcriptEventsMapToChatSenders() {
+        val userTranscript = TranscriptEvent(
+            sender = MessageSender.USER,
+            text = "Show my restaurant spending",
+            isFinal = true
+        )
+        assertEquals(MessageSender.USER, userTranscript.sender)
+        assertEquals("Show my restaurant spending", userTranscript.text)
+        assertTrue(userTranscript.isFinal)
+
+        val assistantTranscript = TranscriptEvent(
+            sender = MessageSender.ASSISTANT,
+            text = "You spent $120 on restaurants this month.",
+            isFinal = true
+        )
+        assertEquals(MessageSender.ASSISTANT, assistantTranscript.sender)
+        assertEquals("You spent $120 on restaurants this month.", assistantTranscript.text)
     }
 }

@@ -26,6 +26,7 @@ abstract class DomainBindingsModule {
     @Binds abstract fun rewriter(impl: FirebaseOnboardingAI): TextRewriter
     @Binds abstract fun auditor(impl: RoutingAuditorRepository): AuditorRepository
     @Binds abstract fun chat(impl: com.talktomyfinances.android.data.repository.FirestoreChatRepository): com.talktomyfinances.android.domain.ChatRepository
+    @Binds abstract fun liveVoice(impl: com.talktomyfinances.android.data.repository.LiveVoiceRepositoryImpl): com.talktomyfinances.android.domain.LiveVoiceManager
 
     companion object {
         @Provides fun goalResolver(classifier: GoalClassifier) = GoalResolver(classifier)
