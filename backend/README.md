@@ -52,8 +52,15 @@ uv run -m pytest -q
 The mock dataset is *generated*, not hand-authored (see
 `mock_banksync/data/generate.py`): it is crafted so that every prompt-chip
 recency tier (This Week → YTD) has a positive "micro-win" to demonstrate
-(PRD 3.2 / issue #2), and its timeline is anchored to `--as-of` so the short
-tiers never go stale. When the demo window has passed, regenerate and commit:
+(PRD 3.2 / issue #2).
+
+**The demo clock is pinned, so the deployment never goes stale.** The dataset
+is a frozen snapshot, and the mock endpoint's default date window is anchored
+to the dataset's own last date (its `--as-of`), *not* the wall clock — so
+"This Week" / "Last 30 Days" queries keep working indefinitely after deploy,
+with no refresh. Set `BANKSYNC_MOCK_AS_OF=YYYY-MM-DD` in the environment to
+pin an explicit date instead. Regenerate and redeploy only if you want to
+re-anchor the story to a new date (the pin follows the dataset automatically):
 
 ```powershell
 uv run python mock_banksync/data/generate.py --as-of 2026-11-10
