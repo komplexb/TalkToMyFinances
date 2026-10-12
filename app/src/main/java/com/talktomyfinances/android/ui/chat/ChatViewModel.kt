@@ -77,6 +77,7 @@ class ChatViewModel @Inject constructor(
     init {
         ensureAuthAndObserveChat()
         observeVoiceTranscripts()
+        observeVisualCardEvents()
     }
 
     private fun ensureAuthAndObserveChat() {
@@ -182,6 +183,27 @@ class ChatViewModel @Inject constructor(
                     chatRepository.saveMessage(uid, chatMsg)
                 } catch (e: Exception) {
                     _error.value = "Failed to sync voice transcript: ${e.message}"
+                }
+            }
+        }
+    }
+
+    private fun observeVisualCardEvents() {
+        viewModelScope.launch {
+            liveVoiceManager.visualCardEvents.collect { payload ->
+                val user = authRepository.currentUser ?: return@collect
+                val uid = user.uid
+
+                val chatMsg = ChatMessage(
+                    sender = MessageSender.ASSISTANT,
+                    text = "I've popped that breakdown onto your screen so you can check it out whenever you're ready.",
+                    visualCard = payload,
+                    auditReceipt = payload.auditReceipt
+                )
+                try {
+                    chatRepository.saveMessage(uid, chatMsg)
+                } catch (e: Exception) {
+                    _error.value = "Failed to sync visual card: ${e.message}"
                 }
             }
         }

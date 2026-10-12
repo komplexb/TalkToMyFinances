@@ -193,6 +193,14 @@ Set the production backend URL in the Firebase Console or via Remote Config temp
 1. Ensure your production APK/AAB signing certificate fingerprint (SHA-256) is registered under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
 2. Switch App Check enforcement mode from **Unenforced / Monitoring** to **Enforced** for Firestore, Storage, and AI Logic to block unauthorized API requests.
 
+### 5. Deploy Gemini Live Client-Side Tool Calling & Voice Persona (PRD 6.2)
+1. In [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config), verify the production template contains:
+   - `live_model_name`: `gemini-3.1-flash-live-preview`
+   - `live_model_prompt`: Contains the 5 voice persona rules including Rule 5 (Visual Offloading via `render_visual_card(card_type, payload)`).
+2. Publish Remote Config changes.
+3. In [Firebase Console > AI Logic](https://console.firebase.google.com/project/_/ailogic), ensure Gemini Developer API is enabled and quota is provisioned for Gemini Live bidirectional streaming.
+4. Client cards mount directly from the self-contained WebSocket payload into `LazyColumn` and persist to Cloud Firestore (`users/{userId}/chat_history`) without secondary backend roundtrips.
+
 ---
 
 ## 📄 License

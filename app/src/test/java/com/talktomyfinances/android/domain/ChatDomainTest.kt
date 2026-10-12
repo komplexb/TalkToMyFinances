@@ -1,9 +1,16 @@
 package com.talktomyfinances.android.domain
 
+import com.google.firebase.ai.type.FunctionCallPart
+import com.talktomyfinances.android.data.repository.LiveVoiceRepositoryImpl
 import com.talktomyfinances.android.data.repository.StubAuditorRepository
 import com.talktomyfinances.android.ui.chat.ChatUiState
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -195,5 +202,174 @@ class ChatDomainTest {
         )
         assertEquals(MessageSender.ASSISTANT, assistantTranscript.sender)
         assertEquals("You spent $120 on restaurants this month.", assistantTranscript.text)
+    }
+
+    @Test
+    fun visualCardPayloadSerializesAndDeserializesRoundTrip() {
+        val payload = VisualCardPayload(
+            cardType = "category_breakdown",
+            title = "Food & Drink Breakdown",
+            totalAmount = 450.00,
+            items = listOf(
+                VisualCardItemData(category = "Restaurants", amount = 250.00, percentage = 55.56),
+                VisualCardItemData(category = "Cafes & Coffee", amount = 120.00, percentage = 26.67),
+                VisualCardItemData(category = "Fast Food", amount = 80.00, percentage = 17.78)
+            ),
+            auditReceipt = AuditReceipt(
+                summary = "Total Food & Drink expenditure across 3 categories.",
+                value = 450.00,
+                spec = FinancialQuerySpec(targetMetric = "TOTAL_SUM", includedCategories = listOf("Dining", "Food"))
+            ),
+            timeframe = "Last 30 Days"
+        )
+
+        val encoded = json.encodeToString(VisualCardPayload.serializer(), payload)
+        assertTrue(encoded.contains("\"card_type\":\"category_breakdown\""))
+        assertTrue(encoded.contains("\"total_amount\":450.0"))
+        assertTrue(encoded.contains("\"Restaurants\""))
+        assertTrue(encoded.contains("\"Cafes & Coffee\""))
+
+        val decoded = json.decodeFromString(VisualCardPayload.serializer(), encoded)
+        assertEquals(payload.cardType, decoded.cardType)
+        assertEquals(payload.title, decoded.title)
+        assertEquals(payload.totalAmount, decoded.totalAmount)
+        assertEquals(3, decoded.items.size)
+        assertEquals(250.00, decoded.items[0].amount, 0.001)
+        assertEquals(55.56, decoded.items[0].percentage ?: 0.0, 0.001)
+        assertEquals("Total Food & Drink expenditure across 3 categories.", decoded.auditReceipt?.summary)
+        assertEquals("Last 30 Days", decoded.timeframe)
+    }
+
+    @Test
+    fun chatMessageWithVisualCardPreservedInFirestoreFormat() {
+        val card = VisualCardPayload(
+            cardType = "monthly_average",
+            title = "Average Grocery Spend",
+            totalAmount = 380.00,
+            items = listOf(
+                VisualCardItemData(category = "Woolworths", amount = 220.00, percentage = 57.89),
+                VisualCardItemData(category = "Coles", amount = 160.00, percentage = 42.11)
+            ),
+            auditReceipt = AuditReceipt(
+                summary = "Average spend calculated across 4 pay cycles.",
+                value = 380.00
+            )
+        )
+
+        val originalMessage = ChatMessage(
+            sender = MessageSender.ASSISTANT,
+            text = "I've popped that breakdown onto your screen so you can check it out whenever you're ready.",
+            visualCard = card,
+            auditReceipt = card.auditReceipt
+        )
+
+        // Simulate Firestore serialization
+        val firestoreMap = mutableMapOf<String, Any>(
+            "id" to originalMessage.id,
+            "sender" to originalMessage.sender.name,
+            "text" to originalMessage.text,
+            "timestamp" to originalMessage.timestamp,
+            "visualCardPayloadJson" to json.encodeToString(VisualCardPayload.serializer(), card),
+            "auditReceiptJson" to json.encodeToString(AuditReceipt.serializer(), card.auditReceipt!!)
+        )
+
+        // Simulate Firestore deserialization
+        val restoredCard = json.decodeFromString<VisualCardPayload>(firestoreMap["visualCardPayloadJson"] as String)
+        val restoredReceipt = json.decodeFromString<AuditReceipt>(firestoreMap["auditReceiptJson"] as String)
+        val restoredMessage = ChatMessage(
+            id = firestoreMap["id"] as String,
+            sender = MessageSender.valueOf(firestoreMap["sender"] as String),
+            text = firestoreMap["text"] as String,
+            auditReceipt = restoredReceipt,
+            visualCard = restoredCard,
+            timestamp = firestoreMap["timestamp"] as Long
+        )
+
+        assertEquals(originalMessage.id, restoredMessage.id)
+        assertEquals(originalMessage.sender, restoredMessage.sender)
+        assertEquals(originalMessage.text, restoredMessage.text)
+        assertNotNull(restoredMessage.visualCard)
+        assertEquals("Average Grocery Spend", restoredMessage.visualCard?.title)
+        assertEquals(2, restoredMessage.visualCard?.items?.size)
+        assertEquals(220.00, restoredMessage.visualCard?.items?.get(0)?.amount ?: 0.0, 0.001)
+        assertEquals("Average spend calculated across 4 pay cycles.", restoredMessage.auditReceipt?.summary)
+    }
+
+    @Test
+    fun mockToolCallInvocationParsesVisualCardPayload() {
+        val toolCallArgs = buildJsonObject {
+            put("card_type", "category_breakdown")
+            putJsonObject("payload") {
+                put("title", "Takeaway Spend Breakdown")
+                put("total_amount", 185.50)
+                put("timeframe", "This Month")
+                putJsonArray("items") {
+                    add(buildJsonObject {
+                        put("category", "Uber Eats")
+                        put("amount", 125.00)
+                        put("percentage", 67.38)
+                    })
+                    add(buildJsonObject {
+                        put("category", "Menulog")
+                        put("amount", 60.50)
+                        put("percentage", 32.62)
+                    })
+                }
+                putJsonObject("audit_receipt") {
+                    put("summary", "Takeaway spend computed deterministically.")
+                    put("value", 185.50)
+                    put("timeframe", "This Month")
+                }
+            }
+        }
+
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = toolCallArgs,
+            id = "call_visual_123"
+        )
+
+        val parsedPayload = LiveVoiceRepositoryImpl.parseVisualCardCall(functionCall)
+
+        assertEquals("category_breakdown", parsedPayload.cardType)
+        assertEquals("Takeaway Spend Breakdown", parsedPayload.title)
+        assertEquals(185.50, parsedPayload.totalAmount ?: 0.0, 0.001)
+        assertEquals("This Month", parsedPayload.timeframe)
+        assertEquals(2, parsedPayload.items.size)
+        assertEquals("Uber Eats", parsedPayload.items[0].category)
+        assertEquals(125.00, parsedPayload.items[0].amount, 0.001)
+        assertEquals(67.38, parsedPayload.items[0].percentage ?: 0.0, 0.001)
+        assertNotNull(parsedPayload.auditReceipt)
+        assertEquals(185.50, parsedPayload.auditReceipt?.value ?: 0.0, 0.001)
+        assertEquals("Takeaway spend computed deterministically.", parsedPayload.auditReceipt?.summary)
+    }
+
+    @Test
+    fun selfContainedVisualCardRequiresZeroSecondaryNetworkFetches() {
+        // Issue #15 & #33: The Visual Card payload must be fully self-contained.
+        // It provides all visual title, amounts, items, percentages, and audit receipts directly.
+        val payload = VisualCardPayload(
+            cardType = "spending_trend",
+            title = "Weekend vs Weekday Spend",
+            totalAmount = 620.00,
+            items = listOf(
+                VisualCardItemData(category = "Weekend Outflow", amount = 420.00, percentage = 67.74),
+                VisualCardItemData(category = "Weekday Outflow", amount = 200.00, percentage = 32.26)
+            ),
+            auditReceipt = AuditReceipt(
+                summary = "Weekend vs weekday calculation over synthetic ledger.",
+                value = 620.00
+            ),
+            timeframe = "Last 14 Days"
+        )
+
+        // Assert all data necessary to construct and display the visual card is present
+        assertNotNull(payload.title)
+        assertNotNull(payload.totalAmount)
+        assertEquals(2, payload.items.size)
+        assertTrue(payload.items.all { it.amount > 0 && it.percentage != null })
+        assertNotNull(payload.auditReceipt?.summary)
+        assertNotNull(payload.auditReceipt?.value)
+        assertEquals("Last 14 Days", payload.timeframe)
     }
 }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface LiveVoiceManager {
     val voiceState: StateFlow<VoiceState>
     val transcriptEvents: SharedFlow<TranscriptEvent>
+    val visualCardEvents: SharedFlow<VisualCardPayload>
 
     suspend fun startSession(): Result<Unit>
     suspend fun stopSession()

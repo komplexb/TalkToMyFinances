@@ -55,6 +55,7 @@ import com.talktomyfinances.android.R
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.ui.chat.components.VisualCardView
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -196,7 +197,10 @@ fun ChatMessageItem(message: ChatMessage) {
             )
         }
 
-        message.auditReceipt?.let { receipt ->
+        message.visualCard?.let { visualCard ->
+            Spacer(modifier = Modifier.height(8.dp))
+            VisualCardView(visualCard = visualCard)
+        } ?: message.auditReceipt?.let { receipt ->
             Spacer(modifier = Modifier.height(6.dp))
             AuditReceiptCard(receipt = receipt)
         }
