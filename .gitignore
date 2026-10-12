@@ -24,3 +24,4 @@ __pycache__/
 .pytest_cache/
 
 docs/Product/Plan.md
+backend/backend.log
