@@ -298,20 +298,8 @@ class AIRemoteDataSource @Inject constructor(
             else -> "TOTAL_SUM"
         }
 
-        val merchants = mutableListOf<String>()
-        if (lower.contains("uber eats") || lower.contains("ubereats")) merchants.add("Uber Eats")
-        else if (lower.contains("uber")) merchants.add("Uber")
-
-        val categories = mutableListOf<String>()
-        if (lower.contains("grocer")) categories.add("groceries")
-        if (lower.contains("cafe") || lower.contains("coffee")) categories.add("dining")
-        if (lower.contains("restaurant") || lower.contains("eat out") || lower.contains("takeaway")) categories.add("dining")
-        if (lower.contains("utilit") || lower.contains("bill")) categories.add("utilities")
-
         return FinancialQuerySpec(
             targetMetric = targetMetric,
-            includedMerchants = merchants,
-            includedCategories = categories,
             temporalGrain = "MONTH",
             denominatorStrategy = "ACTIVE_PERIODS_ONLY"
         )

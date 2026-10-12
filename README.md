@@ -181,4 +181,4 @@ Set the production backend URL in the Firebase Console or via Remote Config temp
 ---
 
 ## 📄 License
-Licensed under the Apache License 2.0.
+Proprietary. All rights reserved. No part of this codebase may be copied, reproduced, distributed, or forked without prior written permission.
