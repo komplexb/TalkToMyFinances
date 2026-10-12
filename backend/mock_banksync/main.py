@@ -5,7 +5,7 @@ import binascii
 import json
 import os
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,8 +21,28 @@ PAGE_SIZE = 25
 TRANSACTIONS = json.loads(
     (ROOT / "mock_banksync/data/transactions.json").read_text(encoding="utf-8")
 )
+# The dataset is a frozen snapshot, so its last date doubles as the demo clock.
+DATASET_TODAY = max(date.fromisoformat(row["date"]) for row in TRANSACTIONS)
 
 app = FastAPI(title="Local BankSync Mock", version="0.1.0")
+
+
+def demo_today() -> date:
+    """The demo's "today": pinned to the dataset, never the wall clock.
+
+    The dataset is generated anchored to an ``--as-of`` date (see
+    ``data/generate.py``), so every recency window stays fresh relative to
+    the demo's own clock indefinitely. Set ``BANKSYNC_MOCK_AS_OF``
+    (YYYY-MM-DD) to pin an explicit date; otherwise use the last date
+    present in the dataset.
+    """
+    raw = os.getenv("BANKSYNC_MOCK_AS_OF", "")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            pass  # e.g. 2026-02-30: fall back to the dataset anchor
+    return DATASET_TODAY
 
 
 @app.exception_handler(HTTPException)
@@ -99,7 +119,7 @@ def list_transactions(
     if bid != "demo" or aid != "spending":
         raise HTTPException(status_code=404, detail="Bank or account not found")
 
-    end = parse_date(to_date) if to_date is not None else datetime.now(timezone.utc).date()
+    end = parse_date(to_date) if to_date is not None else demo_today()
     start = parse_date(from_date) if from_date is not None else end - timedelta(days=30)
     if start > end:
         raise HTTPException(status_code=400, detail="from must be on or before to")
