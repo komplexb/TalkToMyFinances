@@ -1,15 +1,29 @@
-"""Fetch the fixed sample period and print a small summary."""
+"""Fetch a sample period and print a small summary."""
 
 import argparse
+import json
 from decimal import Decimal
+from pathlib import Path
 
 from banksync.banksync_client import BankSyncClient
 
+DATASET = Path(__file__).resolve().parents[1] / "mock_banksync/data/transactions.json"
+
+
+def default_range() -> tuple[str, str]:
+    """Span of the generated mock dataset, so stale dates are never hard-coded."""
+    rows = json.loads(DATASET.read_text(encoding="utf-8"))
+    dates = [row["date"] for row in rows]
+    return min(dates), max(dates)
+
 
 def main():
+    first, last = default_range()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--from", dest="start", default="2026-07-01")
-    parser.add_argument("--to", dest="end", default="2026-09-30")
+    parser.add_argument("--from", dest="start", default=first,
+                        help=f"Start date, YYYY-MM-DD (default: {first}, dataset start)")
+    parser.add_argument("--to", dest="end", default=last,
+                        help=f"End date, YYYY-MM-DD (default: {last}, dataset end)")
     args = parser.parse_args()
 
     client = BankSyncClient()
