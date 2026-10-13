@@ -63,7 +63,7 @@ def run_audit(req: AuditRequest) -> AuditResponse:
             f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
         )
         response = client.models.generate_content(
-            model=PARSER_MODEL_NAME,
+            model=CURATION_MODEL_NAME,
             contents=prompt,
         )
         if not response.text:
@@ -138,6 +138,12 @@ def execute_spec_compute(spec: FinancialQuerySpec, transactions: List[Dict[str, 
         summary = f"Run rate projection calculated at ${val:.2f}."
 
     return AuditReceipt(summary=summary, value=round(val, 2), spec=spec)
+
+@app.post("/compute", response_model=AuditReceipt)
+def compute_spec(spec: FinancialQuerySpec) -> AuditReceipt:
+    """Computes deterministic math and Audit Receipt directly from a FinancialQuerySpec."""
+    txs = load_transactions()
+    return execute_spec_compute(spec, txs)
 
 @app.post("/query", response_model=AuditReceipt)
 def run_query(req: QueryRequest) -> AuditReceipt:

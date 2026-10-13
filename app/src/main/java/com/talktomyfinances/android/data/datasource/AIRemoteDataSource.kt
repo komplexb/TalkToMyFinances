@@ -25,6 +25,7 @@ import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.talktomyfinances.android.data.schema.MealSchema
 import com.talktomyfinances.android.data.schema.RecipeSchema
+import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.google.firebase.perf.performance
 import com.google.firebase.perf.trace
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
@@ -221,7 +222,77 @@ class AIRemoteDataSource @Inject constructor(
         }
     }
 
+    suspend fun parseFinancialIntent(prompt: String): FinancialQuerySpec {
+        val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
+        val model = aiModel.generativeModel(
+            modelName = modelName,
+            systemInstruction = content {
+                text(
+                    "You are an Intent Parser for financial queries in personal finance. " +
+                    "Map user queries into a JSON object matching this schema:\n" +
+                    "{\n" +
+                    "  \"target_metric\": \"MONTHLY_AVERAGE\" | \"TOTAL_SUM\" | \"TRANSACTION_COUNT\" | \"RUN_RATE\",\n" +
+                    "  \"included_merchants\": [string],\n" +
+                    "  \"excluded_merchants\": [string],\n" +
+                    "  \"included_categories\": [string],\n" +
+                    "  \"excluded_categories\": [string],\n" +
+                    "  \"temporal_grain\": \"WEEK\" | \"PAY_CYCLE\" | \"MONTH\" | \"QUARTER\" | \"YEAR\",\n" +
+                    "  \"denominator_strategy\": \"ACTIVE_PERIODS_ONLY\" | \"ALL_CALENDAR_PERIODS\",\n" +
+                    "  \"exclude_pending\": true,\n" +
+                    "  \"exclude_internal_transfers\": true\n" +
+                    "}\n" +
+                    "Rules: Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript."
+                )
+            }
+        )
+
+        return try {
+            val response = model.generateContent(prompt)
+            val raw = response.text ?: throw IllegalStateException("Empty response from intent parser model")
+            val clean = raw.replace("```json", "").replace("```", "").trim()
+            json.decodeFromString<FinancialQuerySpec>(clean)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse intent via Gemini: ${e.message}", e)
+            throw IllegalStateException("Could not parse financial intent for query: $prompt", e)
+        }
+    }
+
+    suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
+        val judgeModelName = remoteConfig.getString(JUDGE_AI_MODEL_KEY).ifBlank { DEFAULT_JUDGE_MODEL }
+        val judgeModel = aiModel.generativeModel(
+            modelName = judgeModelName,
+            systemInstruction = content {
+                text(
+                    "You are a reading-level quality judge for personal finance responses. " +
+                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
+                    "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
+                    "If the input already adheres to plain English, return it unchanged. " +
+                    "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
+                    "Reply with the final text only."
+                )
+            }
+        )
+
+        return try {
+            val prompt = if (verifiedAmount != null) {
+                "Prose to judge: \"$prose\". Must preserve exact number: \$$verifiedAmount."
+            } else {
+                "Prose to judge: \"$prose\"."
+            }
+            val response = judgeModel.generateContent(prompt)
+            val rewritten = response.text?.trim()
+            if (!rewritten.isNullOrBlank()) rewritten else prose
+        } catch (e: Exception) {
+            Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
+            prose
+        }
+    }
+
     companion object {
+        private const val CHAT_AI_MODEL_KEY = "chat_ai_model"
+        private const val JUDGE_AI_MODEL_KEY = "judge_ai_model"
+        private const val DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+        private const val DEFAULT_JUDGE_MODEL = "gemini-3.5-flash-lite"
         //Remote Config Keys
         private const val GENERATE_RECIPE_KEY = "generate_recipe"
         private const val GENERATE_RECIPE_PHOTO_GEMINI_KEY = "generate_recipe_photo_gemini"
