@@ -5,8 +5,6 @@ import com.talktomyfinances.android.data.model.Recipe
 import com.talktomyfinances.android.data.model.Review
 import com.talktomyfinances.android.data.model.Like
 import com.talktomyfinances.android.data.model.User
-import com.talktomyfinances.android.ui.recipeList.RecipeListItem
-import com.talktomyfinances.android.ui.recipeList.filter.FilterOptions
 import com.talktomyfinances.android.data.model.GroceryItem
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -24,14 +22,6 @@ class DatabaseRepository @Inject constructor(
 
     suspend fun getRecipe(recipeId: String): Recipe {
         return databaseRemoteDataSource.getRecipe(recipeId)
-    }
-
-    suspend fun getAllRecipes(): List<RecipeListItem> {
-        return databaseRemoteDataSource.getAllRecipes()
-    }
-
-    suspend fun getPopularTags(): List<String> {
-        return databaseRemoteDataSource.getPopularTags()
     }
 
     suspend fun setReview(review: Review) {
@@ -52,13 +42,6 @@ class DatabaseRepository @Inject constructor(
 
     suspend fun getFavorite(userId: String, recipeId: String): Boolean {
         return databaseRemoteDataSource.getFavorite(userId, recipeId)
-    }
-
-    suspend fun getFilteredRecipes(
-        filterOptions: FilterOptions,
-        userId: String
-    ): List<RecipeListItem> {
-        return databaseRemoteDataSource.getFilteredRecipes(filterOptions, userId)
     }
 
     fun getGroceriesFlow(userId: String): Flow<List<GroceryItem>> {
