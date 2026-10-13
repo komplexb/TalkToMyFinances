@@ -32,5 +32,12 @@ Guide the implementation with these project rules:
 
 Call the Skill tool with `implement` (or run `/implement`) with the ticket reference, adhering strictly to the workflow rules above.
 
-## Completion
+## Manual Testing
+Instruct the developer how to manually test the new change/feature.
+Setup the developer for success:
+- do the steps you can do, start servers, run shell commands, etc.
+- tell the user what he needs to set if they are unset (which means you need to check first not just assume), e.g. environment variables, config files, etc.
+- tell the developer where to go in the UI to exercise the new capability, and what to look for to verify it works as expected.
+
+## PR
 Assuming /code-review was run as a part of implement, call the Skill tool with `pr` (or run `/pr`).
