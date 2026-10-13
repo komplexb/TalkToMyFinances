@@ -173,22 +173,8 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun observeVoiceTranscripts() {
-        viewModelScope.launch {
-            liveVoiceManager.transcriptEvents.collect { event ->
-                val user = authRepository.currentUser ?: return@collect
-                val uid = user.uid
-
-                val chatMsg = ChatMessage(
-                    sender = event.sender,
-                    text = event.text
-                )
-                try {
-                    chatRepository.saveMessage(uid, chatMsg)
-                } catch (e: Exception) {
-                    _error.value = "Failed to sync voice transcript: ${e.message}"
-                }
-            }
-        }
+        // Voice dialogue transcribing to chat bubbles is disabled per design.
+        // Supporting visual cards / charts will be rendered inline during tool calls in Issue #33.
     }
 
     fun switchToVoice() {
