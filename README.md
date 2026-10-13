@@ -164,19 +164,27 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
      ```env
      GEMINI_API_KEY=AIzaSy...
      ```
-2. **Start the Local Backend:**
+2. **Start Development Environment (One Command):**
    ```sh
-   cd backend
-   export $(cat .env | grep -v '^#' | xargs)
-   uv run uvicorn auditor.main:app --host 0.0.0.0 --port 8000 --reload
+   make dev     # or `npm run dev`
    ```
+   *This automatically sets up `adb reverse` port forwarding and starts the local Python uvicorn backend on port 8000.*
 
-### 2. Reverse Port Forwarding to Android Device/Emulator
-To allow the Android app running on an emulator or USB-connected physical phone to reach `http://127.0.0.1:8000` on your host Mac:
-```sh
-adb reverse tcp:8000 tcp:8000
-```
-*(Run this once whenever an emulator starts or after plugging in a physical device).*
+---
+
+### 2. Available Monorepo Commands (`Makefile` / `package.json`)
+
+Instead of remembering paths or individual server flags, use the root shortcuts:
+
+| Task | Command | Description |
+| :--- | :--- | :--- |
+| **Start Dev Mode** | `make dev` *(or `npm run dev`)* | Configures `adb reverse` port forwarding and starts the backend server. |
+| **Backend Server** | `make backend` *(or `npm run backend`)* | Runs the Python uvicorn backend server on port 8000. |
+| **ADB Reverse** | `make reverse` *(or `npm run reverse`)* | Runs `adb reverse tcp:8000 tcp:8000` for physical devices/emulators. |
+| **Run All Tests** | `make test` *(or `npm run test`)* | Executes Android unit tests and Python backend tests. |
+| **Build Android** | `make build` *(or `npm run build`)* | Assembles the Android debug APK. |
+
+---
 
 ### 3. Launch App & Monitor Logs
 1. Open the project in Android Studio and run `app` on your Android Emulator or connected physical device.
@@ -185,64 +193,11 @@ adb reverse tcp:8000 tcp:8000
 
 ---
 
-## 🚢 How to Deploy to Production
+## 🚢 Production Deployment
 
-When launching **Talk to My Finances** to production, follow these steps to deploy the backend resources, security rules, and production configurations:
+For complete step-by-step instructions on deploying security rules, Cloud Run Python backend, GCP Secret Manager credentials, production Remote Config, and App Check enforcement, see:
 
-### 1. Deploy Firebase Security Rules & Storage Config
-Deploy the Firestore security rules (`firestore.rules`) and Cloud Storage rules (`storage.rules`) to your production project:
-```sh
-npx -y firebase-tools@latest deploy --only firestore:rules,storage --project <PROD_PROJECT_ID>
-```
-
-### 2. Deploy Cloud Run Python Backend & Configure Secrets
-Build and deploy the Python Auditor & Curation backend (`backend/`) using Google Cloud Build:
-```sh
-gcloud builds submit backend \
-  --config backend/cloudbuild.yaml \
-  --substitutions _MOCK_KEY=$(openssl rand -hex 16)
-```
-
-Ensure the Cloud Run service has access to your Gemini API Key (`GEMINI_API_KEY`) so the server-side Curation Agent and Intent Parser can execute LLM calls:
-```sh
-# Option A: Store as a secret in Google Cloud Secret Manager (Recommended)
-# 1. Create the secret in your GCP project:
-gcloud secrets create GEMINI_API_KEY \
-  --replication-policy="automatic" \
-  --project=<PROD_PROJECT_ID>
-
-# 2. Add the API key version (obtained from GCP Credentials / AI Studio):
-echo -n "<YOUR_GEMINI_API_KEY>" | gcloud secrets versions add GEMINI_API_KEY \
-  --data-file=- \
-  --project=<PROD_PROJECT_ID>
-
-# 3. Mount the secret to the Cloud Run service:
-gcloud run services update ttmf-banksync-mock \
-  --region australia-southeast1 \
-  --project=<PROD_PROJECT_ID> \
-  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
-
-# Option B: Set directly as an environment variable (Fast testing / Non-production)
-gcloud run services update ttmf-banksync-mock \
-  --region australia-southeast1 \
-  --project=<PROD_PROJECT_ID> \
-  --set-env-vars GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
-```
-After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
-
-### 3. Update Firebase Remote Config for Production
-Set the production backend URL and model configurations in the Firebase Console or via Remote Config template:
-- Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
-- Set parameters:
-  - `insights_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
-  - `auditor_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
-  - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).
-  - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
-- Publish the changes. (Mobile clients will dynamically fetch these parameters on startup).
-
-### 4. Enforce App Check in Production
-1. Ensure your production APK/AAB signing certificate fingerprint (SHA-256) is registered under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
-2. Switch App Check enforcement mode from **Unenforced / Monitoring** to **Enforced** for Firestore, Storage, and AI Logic to block unauthorized API requests.
+👉 **[DEPLOY.md](DEPLOY.md)**
 
 ---
 
