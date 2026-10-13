@@ -20,12 +20,12 @@ class ChatDomainTest {
     @Test
     fun financialQuerySpecSerializesWithSnakeCaseKeys() {
         val spec = FinancialQuerySpec(
-            targetMetric = "MONTHLY_AVERAGE",
+            targetMetric = TargetMetric.MONTHLY_AVERAGE,
             includedMerchants = listOf("Uber", "Lyft"),
             excludedMerchants = listOf("Uber Eats"),
             includedCategories = listOf("Transportation"),
-            temporalGrain = "MONTH",
-            denominatorStrategy = "ACTIVE_PERIODS_ONLY",
+            temporalGrain = TemporalGrain.MONTH,
+            denominatorStrategy = DenominatorStrategy.ACTIVE_PERIODS_ONLY,
             excludePending = true,
             excludeInternalTransfers = true
         )
@@ -38,6 +38,9 @@ class ChatDomainTest {
 
         val decoded = json.decodeFromString(FinancialQuerySpec.serializer(), encoded)
         assertEquals(spec, decoded)
+        assertEquals(TargetMetric.MONTHLY_AVERAGE, decoded.targetMetric)
+        assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
+        assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
     }
 
     @Test
@@ -62,7 +65,7 @@ class ChatDomainTest {
 
         val receipt = json.decodeFromString(AuditReceipt.serializer(), backendJson)
         assertEquals(253.50, receipt.value ?: 0.0, 0.001)
-        assertEquals("TOTAL_SUM", receipt.spec.targetMetric)
+        assertEquals(TargetMetric.TOTAL_SUM, receipt.spec.targetMetric)
         assertEquals(listOf("Uber"), receipt.spec.includedMerchants)
         assertTrue(receipt.summary.contains("${'$'}253.50"))
     }
@@ -72,20 +75,20 @@ class ChatDomainTest {
         val stub = StubAuditorRepository()
 
         // 1. Total Sum
-        val sumSpec = FinancialQuerySpec(targetMetric = "TOTAL_SUM")
+        val sumSpec = FinancialQuerySpec(targetMetric = TargetMetric.TOTAL_SUM)
         val sumReceipt = stub.compute(sumSpec).getOrThrow()
         assertEquals(253.50, sumReceipt.value ?: 0.0, 0.001)
         assertTrue(sumReceipt.summary.contains("${'$'}253.50"))
 
         // 2. Monthly Average
-        val avgSpec = FinancialQuerySpec(targetMetric = "MONTHLY_AVERAGE")
+        val avgSpec = FinancialQuerySpec(targetMetric = TargetMetric.MONTHLY_AVERAGE)
         val avgReceipt = stub.compute(avgSpec).getOrThrow()
         assertEquals(253.50, avgReceipt.value ?: 0.0, 0.001)
         assertTrue(avgReceipt.summary.contains("Average monthly spend"))
 
         // 3. Transaction Count
         val countSpec = FinancialQuerySpec(
-            targetMetric = "TRANSACTION_COUNT",
+            targetMetric = TargetMetric.TRANSACTION_COUNT,
             includedMerchants = listOf("Woolworths")
         )
         val countReceipt = stub.compute(countSpec).getOrThrow()
@@ -94,7 +97,7 @@ class ChatDomainTest {
     }
 
     @Test
-    fun chatMessageInstantiatesCorrectly() {
+    fun chatMessageInstantiatesAndSerializesToFirestoreMap() {
         val userMsg = ChatMessage(
             sender = MessageSender.USER,
             text = "How much did I spend on Uber?"
@@ -106,7 +109,8 @@ class ChatDomainTest {
 
         val receipt = AuditReceipt(
             summary = "Verified total: ${'$'}253.50",
-            value = 253.50
+            value = 253.50,
+            spec = FinancialQuerySpec(targetMetric = TargetMetric.TOTAL_SUM)
         )
         val assistantMsg = ChatMessage(
             sender = MessageSender.ASSISTANT,
@@ -116,6 +120,36 @@ class ChatDomainTest {
         assertEquals(MessageSender.ASSISTANT, assistantMsg.sender)
         assertNotNull(assistantMsg.auditReceipt)
         assertEquals(253.50, assistantMsg.auditReceipt?.value ?: 0.0, 0.001)
+
+        // Verify Firestore format encoding
+        val firestoreData = mutableMapOf<String, Any>(
+            "id" to assistantMsg.id,
+            "sender" to assistantMsg.sender.name,
+            "text" to assistantMsg.text,
+            "timestamp" to assistantMsg.timestamp,
+            "auditReceiptJson" to json.encodeToString(AuditReceipt.serializer(), assistantMsg.auditReceipt!!)
+        )
+        assertEquals("ASSISTANT", firestoreData["sender"])
+        val decodedReceipt = json.decodeFromString<AuditReceipt>(firestoreData["auditReceiptJson"] as String)
+        assertEquals(TargetMetric.TOTAL_SUM, decodedReceipt.spec.targetMetric)
+        assertEquals(253.50, decodedReceipt.value ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun computeFailurePropagatesExceptionWithoutFalseReceipt() {
+        val failureResult: Result<AuditReceipt> = Result.failure(IllegalStateException("Backend 500 error"))
+        assertTrue(failureResult.isFailure)
+
+        var errorCaught = false
+        var producedReceipt: AuditReceipt? = null
+        try {
+            producedReceipt = failureResult.getOrThrow()
+        } catch (e: Exception) {
+            errorCaught = true
+        }
+
+        assertTrue("Expected failure to throw rather than yield a fallback receipt", errorCaught)
+        assertNull(producedReceipt)
     }
 
     @Test

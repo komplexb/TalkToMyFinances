@@ -248,12 +248,12 @@ class AIRemoteDataSource @Inject constructor(
 
         return try {
             val response = model.generateContent(prompt)
-            val raw = response.text ?: ""
+            val raw = response.text ?: throw IllegalStateException("Empty response from intent parser model")
             val clean = raw.replace("```json", "").replace("```", "").trim()
             json.decodeFromString<FinancialQuerySpec>(clean)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to parse intent via Gemini, falling back to heuristic: ${e.message}")
-            fallbackIntentHeuristic(prompt)
+            Log.e(TAG, "Failed to parse intent via Gemini: ${e.message}", e)
+            throw IllegalStateException("Could not parse financial intent for query: $prompt", e)
         }
     }
 
@@ -286,23 +286,6 @@ class AIRemoteDataSource @Inject constructor(
             Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
             prose
         }
-    }
-
-    private fun fallbackIntentHeuristic(prompt: String): FinancialQuerySpec {
-        val lower = prompt.lowercase()
-        val isAverage = lower.contains("average") || lower.contains("typical") || lower.contains("per month")
-        val isCount = lower.contains("how many times") || lower.contains("how often") || lower.contains("count")
-        val targetMetric = when {
-            isAverage -> "MONTHLY_AVERAGE"
-            isCount -> "TRANSACTION_COUNT"
-            else -> "TOTAL_SUM"
-        }
-
-        return FinancialQuerySpec(
-            targetMetric = targetMetric,
-            temporalGrain = "MONTH",
-            denominatorStrategy = "ACTIVE_PERIODS_ONLY"
-        )
     }
 
     companion object {
