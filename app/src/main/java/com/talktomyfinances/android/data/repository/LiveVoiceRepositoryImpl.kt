@@ -83,7 +83,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val session = liveModel.connect()
             liveSession = session
 
-            _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTED)
+            var currentUserTranscript = ""
+            var currentAssistantTranscript = ""
 
             scope.launch {
                 try {
@@ -91,32 +92,40 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                         transcriptHandler = { inputTranscription, outputTranscription ->
                             inputTranscription?.text?.let { text ->
                                 if (text.isNotBlank()) {
+                                    if (currentAssistantTranscript.isNotBlank()) {
+                                        _transcriptEvents.tryEmit(
+                                            TranscriptEvent(
+                                                sender = MessageSender.ASSISTANT,
+                                                text = currentAssistantTranscript,
+                                                isFinal = true
+                                            )
+                                        )
+                                        currentAssistantTranscript = ""
+                                    }
+                                    currentUserTranscript = text
                                     _voiceState.value = _voiceState.value.copy(
                                         status = VoiceSessionStatus.LISTENING,
                                         activeTranscript = text
-                                    )
-                                    _transcriptEvents.tryEmit(
-                                        TranscriptEvent(
-                                            sender = MessageSender.USER,
-                                            text = text,
-                                            isFinal = true
-                                        )
                                     )
                                 }
                             }
 
                             outputTranscription?.text?.let { text ->
                                 if (text.isNotBlank()) {
+                                    if (currentUserTranscript.isNotBlank()) {
+                                        _transcriptEvents.tryEmit(
+                                            TranscriptEvent(
+                                                sender = MessageSender.USER,
+                                                text = currentUserTranscript,
+                                                isFinal = true
+                                            )
+                                        )
+                                        currentUserTranscript = ""
+                                    }
+                                    currentAssistantTranscript = text
                                     _voiceState.value = _voiceState.value.copy(
                                         status = VoiceSessionStatus.SPEAKING,
                                         activeTranscript = text
-                                    )
-                                    _transcriptEvents.tryEmit(
-                                        TranscriptEvent(
-                                            sender = MessageSender.ASSISTANT,
-                                            text = text,
-                                            isFinal = true
-                                        )
                                     )
                                 }
                             }
@@ -145,7 +154,18 @@ class LiveVoiceRepositoryImpl @Inject constructor(
 
     override suspend fun stopSession(): Unit = withContext(Dispatchers.IO) {
         try {
-            audioManager?.isMicrophoneMute = false
+            val active = _voiceState.value.activeTranscript
+            val status = _voiceState.value.status
+            if (active.isNotBlank()) {
+                val sender = if (status == VoiceSessionStatus.SPEAKING) MessageSender.ASSISTANT else MessageSender.USER
+                _transcriptEvents.tryEmit(
+                    TranscriptEvent(
+                        sender = sender,
+                        text = active,
+                        isFinal = true
+                    )
+                )
+            }
             liveSession?.stopAudioConversation()
             liveSession?.close()
         } catch (e: Exception) {
@@ -157,7 +177,6 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     }
 
     override fun setMuted(muted: Boolean) {
-        audioManager?.isMicrophoneMute = muted
         _voiceState.value = _voiceState.value.copy(
             isMuted = muted,
             status = if (muted) VoiceSessionStatus.MUTED else VoiceSessionStatus.LISTENING

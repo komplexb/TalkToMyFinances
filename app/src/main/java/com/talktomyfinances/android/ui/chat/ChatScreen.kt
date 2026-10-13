@@ -160,6 +160,19 @@ fun ChatScreen(
                     ChatMessageItem(message = message)
                 }
 
+                if (uiState.inputMode == ChatInputMode.VOICE && uiState.voiceState.activeTranscript.isNotBlank()) {
+                    item(key = "active_voice_transcript") {
+                        val isUserSpeaking = uiState.voiceState.status == VoiceSessionStatus.LISTENING
+                        ChatMessageItem(
+                            message = ChatMessage(
+                                id = "in_flight_transcript",
+                                sender = if (isUserSpeaking) MessageSender.USER else MessageSender.ASSISTANT,
+                                text = uiState.voiceState.activeTranscript
+                            )
+                        )
+                    }
+                }
+
                 if (uiState.isLoading) {
                     item {
                         ThinkingIndicator()
