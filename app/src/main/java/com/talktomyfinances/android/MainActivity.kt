@@ -22,10 +22,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.google.firebase.Firebase
-import com.google.firebase.appcheck.appCheck
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.talktomyfinances.android.ui.chat.ChatRoute
 import com.talktomyfinances.android.ui.chat.ChatScreen
 import com.talktomyfinances.android.ui.insights.InsightsRoute
@@ -42,7 +38,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setSoftInputMode()
-        initializeAppCheck()
 
         setContent {
             val snackbarHostState = remember { SnackbarHostState() }
@@ -117,17 +112,5 @@ class MainActivity : ComponentActivity() {
 
     private fun setSoftInputMode() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-    }
-
-    private fun initializeAppCheck() {
-        if (BuildConfig.DEBUG) {
-            Firebase.appCheck.installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
-        } else {
-            Firebase.appCheck.installAppCheckProviderFactory(
-                PlayIntegrityAppCheckProviderFactory.getInstance()
-            )
-        }
     }
 }
