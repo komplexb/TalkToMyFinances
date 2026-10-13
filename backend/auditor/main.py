@@ -2,12 +2,15 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
 from auditor.models import AuditReceipt, AuditResponse, FinancialQuerySpec, InsightChip
 
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
 
 app = FastAPI(title="TalkToMyFinances Auditor & Curation API", version="0.1.0")
@@ -41,42 +44,46 @@ def get_genai_client():
     try:
         from google import genai
         return genai.Client(api_key=api_key)
-    except Exception:
-        return None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize google-genai client: {str(e)}")
 
 @app.post("/audit", response_model=AuditResponse)
 def run_audit(req: AuditRequest) -> AuditResponse:
     """Runs Curation Agent over the Fact Catalog to pick 3 relevant chips (2 goal + 1 serendipity)."""
     client = get_genai_client()
+    if not client:
+        raise HTTPException(
+            status_code=500,
+            detail="GEMINI_API_KEY or GOOGLE_API_KEY environment variable is not configured on the backend."
+        )
 
-    if client:
-        try:
-            prompt = (
-                f"Given the user's financial goal '{req.goal}', select 3 most relevant insight chips from this catalog:\n"
-                f"{json.dumps(FACT_CATALOG)}\n\n"
-                f"Select exactly 2 chips matching or helping their goal '{req.goal}' and 1 serendipity chip (is_serendipity=true).\n"
-                f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
-            )
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt,
-            )
-            if response.text:
-                clean_text = response.text.replace("```json", "").replace("```", "").strip()
-                items = json.loads(clean_text)
-                chips = [InsightChip(**item) for item in items]
-                if len(chips) == 3:
-                    return AuditResponse(chips=chips)
-        except Exception:
-            pass  # Fallback on failure
+    try:
+        prompt = (
+            f"Given the user's financial goal '{req.goal}', select 3 most relevant insight chips from this catalog:\n"
+            f"{json.dumps(FACT_CATALOG)}\n\n"
+            f"Select exactly 2 chips matching or helping their goal '{req.goal}' and 1 serendipity chip (is_serendipity=true).\n"
+            f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
+        )
+        response = client.models.generate_content(
+            model=CURATION_MODEL_NAME,
+            contents=prompt,
+        )
+        if not response.text:
+            raise HTTPException(status_code=500, detail="Gemini Curation Agent returned empty response.")
 
-    # Fallback deterministic selection (2 goal chips + 1 serendipity chip)
-    fallback_chips = [
-        InsightChip(text=FACT_CATALOG[0]["text"], recency=FACT_CATALOG[0]["recency"], isSerendipity=False),
-        InsightChip(text=FACT_CATALOG[1]["text"], recency=FACT_CATALOG[1]["recency"], isSerendipity=False),
-        InsightChip(text=FACT_CATALOG[2]["text"], recency=FACT_CATALOG[2]["recency"], isSerendipity=True),
-    ]
-    return AuditResponse(chips=fallback_chips)
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        items = json.loads(clean_text)
+        chips = [InsightChip(**item) for item in items]
+        if len(chips) != 3:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Curation Agent returned {len(chips)} chips instead of the expected 3 chips (2 goal + 1 serendipity)."
+            )
+        return AuditResponse(chips=chips)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Curation Agent execution failed: {str(e)}")
 
 def load_transactions() -> List[Dict[str, Any]]:
     if not TRANSACTIONS_FILE.exists():
@@ -144,42 +151,41 @@ def compute_spec(spec: FinancialQuerySpec) -> AuditReceipt:
 def run_query(req: QueryRequest) -> AuditReceipt:
     """Parser-Spec-Compute endpoint for out-of-catalog financial math."""
     client = get_genai_client()
-    spec: Optional[FinancialQuerySpec] = None
-
-    if client:
-        try:
-            prompt = (
-                f"You are an Intent Parser for financial queries. Parse the following query into a JSON object:\n"
-                f"Query: \"{req.query}\"\n\n"
-                f"JSON Schema details:\n"
-                f"- target_metric: 'MONTHLY_AVERAGE' | 'TOTAL_SUM' | 'TRANSACTION_COUNT' | 'RUN_RATE'\n"
-                f"- included_merchants: list of strings (e.g., ['Uber Eats'])\n"
-                f"- excluded_merchants: list of strings\n"
-                f"- included_categories: list of strings\n"
-                f"- excluded_categories: list of strings\n"
-                f"- temporal_grain: 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'\n"
-                f"- denominator_strategy: 'ACTIVE_PERIODS_ONLY' | 'ALL_CALENDAR_PERIODS'\n"
-                f"- exclude_pending: boolean (default true)\n"
-                f"- exclude_internal_transfers: boolean (default true)\n"
-                f"Return ONLY valid JSON."
-            )
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=prompt,
-            )
-            if response.text:
-                clean_text = response.text.replace("```json", "").replace("```", "").strip()
-                spec = FinancialQuerySpec.model_validate_json(clean_text)
-        except Exception:
-            pass
-
-    # Fallback heuristic if LLM parse fails or key is missing
-    if not spec:
-        spec = FinancialQuerySpec(
-            target_metric="MONTHLY_AVERAGE" if "average" in req.query.lower() else "TOTAL_SUM",
-            included_merchants=["Uber Eats"] if "uber" in req.query.lower() else [],
-            temporal_grain="MONTH"
+    if not client:
+        raise HTTPException(
+            status_code=500,
+            detail="GEMINI_API_KEY or GOOGLE_API_KEY environment variable is not configured on the backend."
         )
+
+    try:
+        prompt = (
+            f"You are an Intent Parser for financial queries. Parse the following query into a JSON object:\n"
+            f"Query: \"{req.query}\"\n\n"
+            f"JSON Schema details:\n"
+            f"- target_metric: 'MONTHLY_AVERAGE' | 'TOTAL_SUM' | 'TRANSACTION_COUNT' | 'RUN_RATE'\n"
+            f"- included_merchants: list of strings (e.g., ['Uber Eats'])\n"
+            f"- excluded_merchants: list of strings\n"
+            f"- included_categories: list of strings\n"
+            f"- excluded_categories: list of strings\n"
+            f"- temporal_grain: 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'\n"
+            f"- denominator_strategy: 'ACTIVE_PERIODS_ONLY' | 'ALL_CALENDAR_PERIODS'\n"
+            f"- exclude_pending: boolean (default true)\n"
+            f"- exclude_internal_transfers: boolean (default true)\n"
+            f"Return ONLY valid JSON."
+        )
+        response = client.models.generate_content(
+            model=PARSER_MODEL_NAME,
+            contents=prompt,
+        )
+        if not response.text:
+            raise HTTPException(status_code=500, detail="Gemini Intent Parser returned empty response.")
+
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        spec = FinancialQuerySpec.model_validate_json(clean_text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Intent Parser execution failed: {str(e)}")
 
     txs = load_transactions()
     return execute_spec_compute(spec, txs)

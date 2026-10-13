@@ -4,9 +4,32 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class TargetMetric {
+    @SerialName("TOTAL_SUM") TOTAL_SUM,
+    @SerialName("MONTHLY_AVERAGE") MONTHLY_AVERAGE,
+    @SerialName("TRANSACTION_COUNT") TRANSACTION_COUNT,
+    @SerialName("RUN_RATE") RUN_RATE
+}
+
+@Serializable
+enum class TemporalGrain {
+    @SerialName("WEEK") WEEK,
+    @SerialName("PAY_CYCLE") PAY_CYCLE,
+    @SerialName("MONTH") MONTH,
+    @SerialName("QUARTER") QUARTER,
+    @SerialName("YEAR") YEAR
+}
+
+@Serializable
+enum class DenominatorStrategy {
+    @SerialName("ACTIVE_PERIODS_ONLY") ACTIVE_PERIODS_ONLY,
+    @SerialName("ALL_CALENDAR_PERIODS") ALL_CALENDAR_PERIODS
+}
+
+@Serializable
 data class FinancialQuerySpec(
     @SerialName("target_metric")
-    val targetMetric: String = "TOTAL_SUM",
+    val targetMetric: TargetMetric = TargetMetric.TOTAL_SUM,
 
     @SerialName("included_merchants")
     val includedMerchants: List<String> = emptyList(),
@@ -21,10 +44,10 @@ data class FinancialQuerySpec(
     val excludedCategories: List<String> = emptyList(),
 
     @SerialName("temporal_grain")
-    val temporalGrain: String = "MONTH",
+    val temporalGrain: TemporalGrain = TemporalGrain.MONTH,
 
     @SerialName("denominator_strategy")
-    val denominatorStrategy: String = "ACTIVE_PERIODS_ONLY",
+    val denominatorStrategy: DenominatorStrategy = DenominatorStrategy.ACTIVE_PERIODS_ONLY,
 
     @SerialName("exclude_pending")
     val excludePending: Boolean = true,

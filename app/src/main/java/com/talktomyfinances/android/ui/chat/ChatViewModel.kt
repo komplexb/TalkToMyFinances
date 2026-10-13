@@ -80,19 +80,23 @@ class ChatViewModel @Inject constructor(
         observeVisualCardEvents()
     }
 
+    private suspend fun getOrEnsureUserId(): String? {
+        val current = authRepository.currentUser
+        if (current != null) return current.uid
+
+        return try {
+            authRepository.createAnonymousAccount()
+            authRepository.currentUser?.uid
+        } catch (e: Exception) {
+            _error.value = "Failed to authenticate: ${e.message}"
+            null
+        }
+    }
+
     private fun ensureAuthAndObserveChat() {
         viewModelScope.launch {
-            val user = authRepository.currentUser ?: run {
-                try {
-                    authRepository.createAnonymousAccount()
-                    authRepository.currentUser
-                } catch (e: Exception) {
-                    _error.value = "Failed to authenticate: ${e.message}"
-                    null
-                }
-            }
-
-            user?.uid?.let { uid ->
+            val uid = getOrEnsureUserId()
+            if (uid != null) {
                 chatRepository.getMessages(uid)
                     .catch { e -> _error.value = "Failed to load chat history: ${e.message}" }
                     .collect { list -> _messagesFlow.value = list }
@@ -115,14 +119,17 @@ class ChatViewModel @Inject constructor(
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
 
-        val user = authRepository.currentUser ?: return
-        val uid = user.uid
-
         _inputText.value = ""
         _isLoading.value = true
         _error.value = null
 
         viewModelScope.launch {
+            val uid = getOrEnsureUserId()
+            if (uid == null) {
+                _isLoading.value = false
+                return@launch
+            }
+
             val userMsg = ChatMessage(
                 sender = MessageSender.USER,
                 text = trimmed
@@ -142,13 +149,10 @@ class ChatViewModel @Inject constructor(
 
                 // 2. Deterministic Math via Cloud Run Auditor (/compute)
                 val auditResult = auditorRepository.compute(spec)
-                val receipt = auditResult.getOrNull()
-
-                val rawSummary = receipt?.summary ?: "Verified calculation completed over synthetic ledger."
-                val verifiedValue = receipt?.value
+                val receipt = auditResult.getOrThrow()
 
                 // 3. Plain-English Readability Check via gemini-3.5-flash-lite Judge
-                val finalProse = aiRemoteDataSource.evaluateWithJudge(rawSummary, verifiedValue)
+                val finalProse = aiRemoteDataSource.evaluateWithJudge(receipt.summary, receipt.value)
 
                 // 4. Save Assistant turn with Audit Receipt to Firestore
                 val assistantMsg = ChatMessage(
@@ -170,22 +174,8 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun observeVoiceTranscripts() {
-        viewModelScope.launch {
-            liveVoiceManager.transcriptEvents.collect { event ->
-                val user = authRepository.currentUser ?: return@collect
-                val uid = user.uid
-
-                val chatMsg = ChatMessage(
-                    sender = event.sender,
-                    text = event.text
-                )
-                try {
-                    chatRepository.saveMessage(uid, chatMsg)
-                } catch (e: Exception) {
-                    _error.value = "Failed to sync voice transcript: ${e.message}"
-                }
-            }
-        }
+        // Voice dialogue transcribing to chat bubbles is disabled per design.
+        // Supporting visual cards / charts will be rendered inline during tool calls in Issue #33.
     }
 
     private fun observeVisualCardEvents() {

@@ -32,57 +32,6 @@ fun VoiceWaveformBar(
     val infiniteTransition = rememberInfiniteTransition(label = "waveform_anim")
 
     val isOscillating = !isMuted && (status == VoiceSessionStatus.LISTENING || status == VoiceSessionStatus.SPEAKING || status == VoiceSessionStatus.CONNECTED)
-
-    val scale1 by infiniteTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = if (isOscillating) 0.85f else 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar1"
-    )
-
-    val scale2 by infiniteTransition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = if (isOscillating) 1.0f else 0.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 550, delayMillis = 100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar2"
-    )
-
-    val scale3 by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = if (isOscillating) 0.75f else 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 480, delayMillis = 50, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar3"
-    )
-
-    val scale4 by infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = if (isOscillating) 0.95f else 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 620, delayMillis = 150, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar4"
-    )
-
-    val scale5 by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = if (isOscillating) 0.7f else 0.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 390, delayMillis = 80, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "bar5"
-    )
-
     val barColor = when {
         isMuted -> MaterialTheme.colorScheme.outline
         status == VoiceSessionStatus.SPEAKING -> MaterialTheme.colorScheme.primary
@@ -91,7 +40,27 @@ fun VoiceWaveformBar(
         else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
     }
 
-    val scales = listOf(scale1, scale2, scale3, scale4, scale5)
+    val barConfigs = listOf(
+        Triple(0.25f, 0.85f, 400 to 0),
+        Triple(0.40f, 1.00f, 550 to 100),
+        Triple(0.30f, 0.75f, 480 to 50),
+        Triple(0.50f, 0.95f, 620 to 150),
+        Triple(0.20f, 0.70f, 390 to 80)
+    )
+
+    val scales = barConfigs.mapIndexed { index, (minH, maxH, timing) ->
+        val (duration, delay) = timing
+        val scale by infiniteTransition.animateFloat(
+            initialValue = minH,
+            targetValue = if (isOscillating) maxH else minH,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = duration, delayMillis = delay, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "waveform_bar_$index"
+        )
+        scale
+    }
 
     Row(
         modifier = modifier,
