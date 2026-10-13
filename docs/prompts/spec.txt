@@ -14,5 +14,4 @@ when ambiguous the spec(s) and issues, supercedes the prd as they are derived fr
     - whenever you feel like reaching for a stub/mock check the backend directory to see if it already exists.
 
 # Implement
-Use /implement
 When implementing, be sure to consult android and firebase skills for best practices and verification of your implementation.
