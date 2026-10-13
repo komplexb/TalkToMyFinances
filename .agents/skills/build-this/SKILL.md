@@ -31,3 +31,6 @@ Guide the implementation with these project rules:
 ## Execution
 
 Call the Skill tool with `implement` (or run `/implement`) with the ticket reference, adhering strictly to the workflow rules above.
+
+## Completion
+Assuming /code-review was run as a part of implement, call the Skill tool with `pr` (or run `/pr`).
