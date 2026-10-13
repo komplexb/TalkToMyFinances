@@ -92,6 +92,18 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             var currentUserTranscript = ""
             var currentAssistantTranscript = ""
 
+            fun flushPendingTurn(pendingSender: MessageSender, pendingText: String) {
+                if (pendingText.isNotBlank()) {
+                    _transcriptEvents.tryEmit(
+                        TranscriptEvent(
+                            sender = pendingSender,
+                            text = pendingText,
+                            isFinal = true
+                        )
+                    )
+                }
+            }
+
             scope.launch {
                 try {
                     Log.d(TAG, "Starting audio conversation...")
@@ -100,16 +112,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                             Log.d(TAG, "transcriptHandler called: input='${inputTranscription?.text}', output='${outputTranscription?.text}'")
                             inputTranscription?.text?.let { text ->
                                 if (text.isNotBlank()) {
-                                    if (currentAssistantTranscript.isNotBlank()) {
-                                        _transcriptEvents.tryEmit(
-                                            TranscriptEvent(
-                                                sender = MessageSender.ASSISTANT,
-                                                text = currentAssistantTranscript,
-                                                isFinal = true
-                                            )
-                                        )
-                                        currentAssistantTranscript = ""
-                                    }
+                                    flushPendingTurn(MessageSender.ASSISTANT, currentAssistantTranscript)
+                                    currentAssistantTranscript = ""
                                     currentUserTranscript = text
                                     _voiceState.value = _voiceState.value.copy(
                                         status = VoiceSessionStatus.LISTENING,
@@ -120,16 +124,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
 
                             outputTranscription?.text?.let { text ->
                                 if (text.isNotBlank()) {
-                                    if (currentUserTranscript.isNotBlank()) {
-                                        _transcriptEvents.tryEmit(
-                                            TranscriptEvent(
-                                                sender = MessageSender.USER,
-                                                text = currentUserTranscript,
-                                                isFinal = true
-                                            )
-                                        )
-                                        currentUserTranscript = ""
-                                    }
+                                    flushPendingTurn(MessageSender.USER, currentUserTranscript)
+                                    currentUserTranscript = ""
                                     currentAssistantTranscript = text
                                     _voiceState.value = _voiceState.value.copy(
                                         status = VoiceSessionStatus.SPEAKING,
