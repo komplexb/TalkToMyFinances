@@ -198,10 +198,14 @@ gcloud run services update ttmf-banksync-mock \
 After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
 
 ### 3. Update Firebase Remote Config for Production
-Set the production backend URL in the Firebase Console or via Remote Config template:
+Set the production backend URL and model configurations in the Firebase Console or via Remote Config template:
 - Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
-- Set parameter `insights_base_url` to your live Cloud Run URL (`https://ttmf-auditor-backend-abc123.a.run.app`).
-- Publish the changes. (Mobile clients will dynamically fetch this URL on startup).
+- Set parameters:
+  - `insights_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
+  - `auditor_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
+  - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).
+  - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
+- Publish the changes. (Mobile clients will dynamically fetch these parameters on startup).
 
 ### 4. Enforce App Check in Production
 1. Ensure your production APK/AAB signing certificate fingerprint (SHA-256) is registered under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
