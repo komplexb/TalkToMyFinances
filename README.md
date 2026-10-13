@@ -143,12 +143,33 @@ If you are setting up a brand-new Firebase project from scratch for **Talk to My
 
 ## 🏃 Running the App Locally & Monitoring Logs
 
-### 1. Start the Local Backend Engine (Monorepo)
-To have the Android app communicate directly with the local Python Auditor engine over your live synthetic ledger:
-```sh
-cd backend
-uv run uvicorn auditor.main:app --host 0.0.0.0 --port 8000 --reload
-```
+### 1. Configure Backend Environment & Start Engine (Monorepo)
+The backend Curation Agent and Intent Parser require a Gemini API key (`GEMINI_API_KEY`).
+
+#### Where Collaborators Get the Key (Project Credentials)
+Since you are a collaborator on the `talktomyfinances-app` project, you already have access—no need to share keys privately:
+- **Option A (Google Cloud Console - Recommended)**:
+  1. Go to [Google Cloud Console > Credentials (talktomyfinances-app)](https://console.cloud.google.com/apis/credentials?project=talktomyfinances-app) (or click **View in Google Cloud** from Firebase Console *Project Settings*).
+  2. Locate the backend API key (e.g. `Gemini-Backend-Developer-Key`) or click **+ CREATE CREDENTIALS > API key**.
+  3. Copy the key string (`AIzaSy...`).
+- **Option B (Google AI Studio)**:
+  1. Go to [Google AI Studio > API Keys](https://aistudio.google.com/app/apikey).
+  2. Click **Create API key** (or **Get API key**).
+  3. Select the shared project: **`talktomyfinances-app`** (Project Number `430381251226`).
+  4. Copy the generated key.
+
+#### Configure Local Environment
+1. **Configure `backend/.env`:**
+   - Create or edit [`backend/.env`](backend/.env) (this file is `.gitignore`d to prevent credentials from being committed):
+     ```env
+     GEMINI_API_KEY=AIzaSy...
+     ```
+2. **Start the Local Backend:**
+   ```sh
+   cd backend
+   export $(cat .env | grep -v '^#' | xargs)
+   uv run uvicorn auditor.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
 
 ### 2. Reverse Port Forwarding to Android Device/Emulator
 To allow the Android app running on an emulator or USB-connected physical phone to reach `http://127.0.0.1:8000` on your host Mac:
@@ -185,14 +206,26 @@ gcloud builds submit backend \
 Ensure the Cloud Run service has access to your Gemini API Key (`GEMINI_API_KEY`) so the server-side Curation Agent and Intent Parser can execute LLM calls:
 ```sh
 # Option A: Store as a secret in Google Cloud Secret Manager (Recommended)
-gcloud secrets create GEMINI_API_KEY --data-file=- <<< "<YOUR_GEMINI_API_KEY>"
+# 1. Create the secret in your GCP project:
+gcloud secrets create GEMINI_API_KEY \
+  --replication-policy="automatic" \
+  --project=<PROD_PROJECT_ID>
+
+# 2. Add the API key version (obtained from GCP Credentials / AI Studio):
+echo -n "<YOUR_GEMINI_API_KEY>" | gcloud secrets versions add GEMINI_API_KEY \
+  --data-file=- \
+  --project=<PROD_PROJECT_ID>
+
+# 3. Mount the secret to the Cloud Run service:
 gcloud run services update ttmf-banksync-mock \
   --region australia-southeast1 \
+  --project=<PROD_PROJECT_ID> \
   --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
 
-# Option B: Set directly as an environment variable
+# Option B: Set directly as an environment variable (Fast testing / Non-production)
 gcloud run services update ttmf-banksync-mock \
   --region australia-southeast1 \
+  --project=<PROD_PROJECT_ID> \
   --set-env-vars GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
 ```
 After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
