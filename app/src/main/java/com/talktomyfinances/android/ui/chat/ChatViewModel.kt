@@ -181,8 +181,7 @@ class ChatViewModel @Inject constructor(
     private fun observeVisualCardEvents() {
         viewModelScope.launch {
             liveVoiceManager.visualCardEvents.collect { payload ->
-                val user = authRepository.currentUser ?: return@collect
-                val uid = user.uid
+                val uid = getOrEnsureUserId() ?: return@collect
 
                 val chatMsg = ChatMessage(
                     sender = MessageSender.ASSISTANT,

@@ -252,7 +252,7 @@ class ChatDomainTest {
             auditReceipt = AuditReceipt(
                 summary = "Total Food & Drink expenditure across 3 categories.",
                 value = 450.00,
-                spec = FinancialQuerySpec(targetMetric = "TOTAL_SUM", includedCategories = listOf("Dining", "Food"))
+                spec = FinancialQuerySpec(targetMetric = TargetMetric.TOTAL_SUM, includedCategories = listOf("Dining", "Food"))
             ),
             timeframe = "Last 30 Days"
         )
@@ -405,5 +405,113 @@ class ChatDomainTest {
         assertNotNull(payload.auditReceipt?.summary)
         assertNotNull(payload.auditReceipt?.value)
         assertEquals("Last 14 Days", payload.timeframe)
+    }
+
+    @Test
+    fun clientSideToolDefinitionIsRegisteredWithCardTypeAndPayload() {
+        val tool = LiveVoiceRepositoryImpl.renderVisualCardTool
+        assertNotNull(tool)
+        assertEquals("render_visual_card", LiveVoiceRepositoryImpl.RENDER_VISUAL_CARD_TOOL_NAME)
+    }
+
+    @Test
+    fun mockToolCallWithJsonStringPayloadParsesCleanly() {
+        val payloadString = """
+            {
+              "card_type": "spending_trend",
+              "title": "Weekly Coffee Trends",
+              "total_amount": 42.50,
+              "timeframe": "This Week",
+              "items": [
+                { "category": "Morning Espresso", "amount": 25.00, "percentage": 58.82 },
+                { "category": "Afternoon Cold Brew", "amount": 17.50, "percentage": 41.18 }
+              ],
+              "audit_receipt": {
+                "summary": "Coffee transactions verified across 7 days.",
+                "value": 42.50
+              }
+            }
+        """.trimIndent()
+
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = mapOf(
+                "card_type" to JsonPrimitive("spending_trend"),
+                "payload" to JsonPrimitive(payloadString)
+            ),
+            id = "call_str_456"
+        )
+
+        val parsed = LiveVoiceRepositoryImpl.parseVisualCardCall(functionCall)
+        assertEquals("spending_trend", parsed.cardType)
+        assertEquals("Weekly Coffee Trends", parsed.title)
+        assertEquals(42.50, parsed.totalAmount ?: 0.0, 0.001)
+        assertEquals(2, parsed.items.size)
+        assertEquals("Morning Espresso", parsed.items[0].category)
+        assertNotNull(parsed.auditReceipt)
+        assertEquals(42.50, parsed.auditReceipt?.value ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun mockToolCallWithMarkdownCodeFencesIsParsedWithoutError() {
+        val fencedPayload = """
+            ```json
+            {
+              "title": "Grocery Run",
+              "total_amount": 110.00,
+              "items": [
+                { "category": "Pantry", "amount": 110.00, "percentage": 100.0 }
+              ]
+            }
+            ```
+        """.trimIndent()
+
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = mapOf(
+                "card_type" to JsonPrimitive("category_breakdown"),
+                "payload" to JsonPrimitive(fencedPayload)
+            ),
+            id = "call_fence_789"
+        )
+
+        val parsed = LiveVoiceRepositoryImpl.parseVisualCardCall(functionCall)
+        assertEquals("category_breakdown", parsed.cardType)
+        assertEquals("Grocery Run", parsed.title)
+        assertEquals(110.00, parsed.totalAmount ?: 0.0, 0.001)
+        assertEquals(1, parsed.items.size)
+    }
+
+    @Test
+    fun mockToolCallExecutionReturnsClientConfirmation() {
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = emptyMap(),
+            id = "call_conf_999"
+        )
+
+        val confirmation = LiveVoiceRepositoryImpl.createSuccessConfirmation(functionCall)
+        assertEquals("render_visual_card", confirmation.name)
+        assertEquals("call_conf_999", confirmation.id)
+
+        val responseJson = confirmation.response
+        assertEquals("success", (responseJson["status"] as? JsonPrimitive)?.content)
+        assertTrue((responseJson["message"] as? JsonPrimitive)?.content?.contains("rendered") == true)
+    }
+
+    @Test
+    fun unsupportedToolCallReturnsUnsupportedResponse() {
+        val functionCall = FunctionCallPart(
+            name = "unknown_tool",
+            args = emptyMap(),
+            id = "call_unknown_1"
+        )
+
+        val response = LiveVoiceRepositoryImpl.createUnsupportedResponse(functionCall)
+        assertEquals("unknown_tool", response.name)
+        assertEquals("call_unknown_1", response.id)
+
+        val responseJson = response.response
+        assertEquals("unsupported", (responseJson["status"] as? JsonPrimitive)?.content)
     }
 }

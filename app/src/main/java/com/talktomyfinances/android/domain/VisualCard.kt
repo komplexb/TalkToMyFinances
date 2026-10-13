@@ -14,7 +14,7 @@ data class VisualCardItemData(
 data class VisualCardPayload(
     @SerialName("card_type")
     val cardType: String = "category_breakdown",
-    val title: String,
+    val title: String = "Spending Breakdown",
     @SerialName("total_amount")
     val totalAmount: Double? = null,
     val items: List<VisualCardItemData> = emptyList(),

@@ -217,8 +217,13 @@ fun ChatMessageItem(message: ChatMessage) {
         }
 
         message.visualCard?.let { visualCard ->
+            val cardWithReceipt = if (visualCard.auditReceipt == null && message.auditReceipt != null) {
+                visualCard.copy(auditReceipt = message.auditReceipt)
+            } else {
+                visualCard
+            }
             Spacer(modifier = Modifier.height(8.dp))
-            VisualCardView(visualCard = visualCard)
+            VisualCardView(visualCard = cardWithReceipt)
         } ?: message.auditReceipt?.let { receipt ->
             Spacer(modifier = Modifier.height(6.dp))
             AuditReceiptCard(receipt = receipt)
