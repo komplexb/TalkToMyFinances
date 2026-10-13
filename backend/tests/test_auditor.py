@@ -1,8 +1,9 @@
-import os
-from unittest.mock import MagicMock, patch
+import math
+
+import pytest
 from fastapi.testclient import TestClient
 
-from auditor.main import app, execute_spec_compute
+from auditor.main import app, build_vocabulary, execute_spec_compute, ground_terms, load_transactions
 from auditor.models import DateWindow, FinancialQuerySpec
 
 client = TestClient(app)
@@ -189,3 +190,229 @@ def test_query_endpoint_requires_query_or_spec():
     response = client.post("/query", json={})
     assert response.status_code == 422
     assert response.json()["status"] == "unparseable"
+
+
+# ---------------------------------------------------------------------------
+# Catalog grounding: vocabulary, canonical echo, hallucinated entities (gap 4)
+# ---------------------------------------------------------------------------
+
+DATASET = load_transactions()
+
+
+def test_ground_terms_matches_punctuated_names():
+    # "uber eats" must resolve the ledger's canonical "UBER *EATS".
+    vocab = build_vocabulary(DATASET)
+    matched, unmatched = ground_terms(["uber eats", "grace city church"], vocab.merchants)
+    assert "UBER *EATS" in matched
+    assert unmatched == ["grace city church"]
+
+
+def test_bare_name_resolves_to_all_variants():
+    # "uber" (no qualifier) intentionally resolves to both UBER and UBER *EATS —
+    # the receipt echoes which, so the user can object.
+    vocab = build_vocabulary(DATASET)
+    matched, unmatched = ground_terms(["uber"], vocab.merchants)
+    assert matched == ["UBER", "UBER *EATS"]
+    assert unmatched == []
+
+
+def test_receipt_echoes_matched_canonical_merchants():
+    r = execute_spec_compute(spec(included_merchants=["uber eats"], target_metric="TOTAL_SUM"), DATASET)
+    assert r.matched_merchants == ["UBER *EATS"]
+    assert "UBER *EATS" in r.summary
+
+
+def test_receipt_states_all_assumptions():
+    r = execute_spec_compute(
+        spec(
+            target_metric="PERIOD_AVERAGE",
+            included_merchants=["uber eats"],
+            excluded_merchants=["grace city church"],
+            temporal_grain="WEEK",
+        ),
+        DATASET,
+    )
+    s = r.summary
+    assert "UBER *EATS" in s              # matched entities
+    assert "grace city church" in s        # exclusions (echoed even when unmatched)
+    assert "pending" in s                  # pending handling
+    assert "refunds" in s                  # refund handling
+    assert "Denominator:" in s             # denominator used
+    assert r.unmatched_terms == ["grace city church"]
+
+
+def test_unmatched_exclusion_is_reported_not_silent():
+    r = execute_spec_compute(
+        spec(target_metric="TRANSACTION_COUNT", temporal_grain="WEEK", excluded_merchants=["grace city church"]),
+        FIXTURE,
+    )
+    assert "grace city church" in r.unmatched_terms
+    assert r.value is not None  # still computes; the exclusion just matched nothing
+
+
+def test_endpoint_clarifies_hallucinated_included_entity():
+    response = client.post(
+        "/query",
+        json={"spec": {"target_metric": "TOTAL_SUM", "included_merchants": ["No Such Place"]}},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert data["status"] == "entity_not_found"
+    assert "value" not in data  # never a confident zero
+
+
+def test_endpoint_suggests_close_matches():
+    response = client.post(
+        "/query",
+        json={"spec": {"target_metric": "TOTAL_SUM", "included_merchants": ["woolwortshs"]}},  # typo
+    )
+    assert response.status_code == 422
+    assert "WOOLWORTHS" in response.json()["message"]
+
+
+# ---------------------------------------------------------------------------
+# Refund invariant (gap 6): credits — incl. refunds — never count as spend
+# ---------------------------------------------------------------------------
+
+def test_refunds_never_count_as_spend():
+    r = execute_spec_compute(spec(included_merchants=["woolworths"], target_metric="TOTAL_SUM"), DATASET)
+    debits = sum(
+        abs(t["amount"])
+        for t in DATASET
+        if (t.get("merchantName") or t.get("description", "")).lower() in ("woolworths", "refund woolworths")
+        and not t["pending"]
+        and t.get("type") == "debit"
+    )
+    assert r.value == round(debits, 2)  # the REFUND WOOLWORTHS credits are excluded
+    assert "refunds" in r.summary
+
+
+# ---------------------------------------------------------------------------
+# is_out_of_spec escape hatch (gap 8): no number, ever
+# ---------------------------------------------------------------------------
+
+def test_out_of_spec_receipt_returns_reason_not_number():
+    response = client.post(
+        "/query",
+        json={
+            "spec": {
+                "target_metric": "PERIOD_AVERAGE",
+                "is_out_of_spec": True,
+                "out_of_spec_reason": "The user asked for a narrative, not a calculation.",
+            }
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "out_of_spec"
+    assert "reason" in data
+    assert "value" not in data
+
+
+def test_compute_refuses_out_of_spec_spec():
+    with pytest.raises(ValueError):
+        execute_spec_compute(
+            FinancialQuerySpec(target_metric="PERIOD_AVERAGE", is_out_of_spec=True), DATASET
+        )
+
+
+# ---------------------------------------------------------------------------
+# Acceptance: every PRD §8 prompt form computes with the right grain, window,
+# denominator and entity semantics (deterministic — no LLM in the compute path)
+# ---------------------------------------------------------------------------
+
+PRD_PROMPT_SPECS = {
+    # name: spec the parser is expected to emit
+    "P1 avg uber eats monthly spend": dict(
+        target_metric="PERIOD_AVERAGE", included_merchants=["uber eats"], temporal_grain="MONTH"
+    ),
+    "P2 average order amount each month": dict(
+        target_metric="AVERAGE_TRANSACTION", included_merchants=["uber eats"], temporal_grain="MONTH"
+    ),
+    "P3 how many times uber eats each week": dict(
+        target_metric="TRANSACTION_COUNT", included_merchants=["uber eats"], temporal_grain="WEEK"
+    ),
+    "P4 monthly avg at restaurants/cafes/coffee/fast food": dict(
+        target_metric="PERIOD_AVERAGE", included_categories=["Dining"], temporal_grain="MONTH"
+    ),
+    "P6 how often I order in weekly, excluding uber eats & church": dict(
+        target_metric="TRANSACTION_COUNT",
+        included_categories=["Dining"],
+        excluded_merchants=["uber eats", "grace city church"],
+        temporal_grain="WEEK",
+    ),
+    "P10 avg monthly grocery spend": dict(
+        target_metric="PERIOD_AVERAGE", included_categories=["Groceries"], temporal_grain="MONTH"
+    ),
+    "P11 avg monthly transport & fuel (incl uber rides)": dict(
+        target_metric="PERIOD_AVERAGE", included_categories=["Transport"], temporal_grain="MONTH"
+    ),
+    "P13 avg monthly at bars/liquor/entertainment": dict(
+        target_metric="PERIOD_AVERAGE", included_categories=["Entertainment"], temporal_grain="MONTH"
+    ),
+}
+
+
+@pytest.mark.parametrize("name,kwargs", list(PRD_PROMPT_SPECS.items()), ids=list(PRD_PROMPT_SPECS))
+def test_prd_prompt_executes_with_correct_receipt(name, kwargs):
+    r = execute_spec_compute(FinancialQuerySpec(**kwargs), DATASET)
+    assert r.value is not None and math.isfinite(r.value) and r.value >= 0
+    assert "Window: " in r.summary
+    assert "Denominator: " in r.summary
+    assert "Excluded: " in r.summary
+    assert "Counted: " in r.summary
+
+
+@pytest.mark.parametrize("name,kwargs", list(PRD_PROMPT_SPECS.items()), ids=list(PRD_PROMPT_SPECS))
+def test_prd_prompt_summary_uses_requested_grain(name, kwargs):
+    r = execute_spec_compute(FinancialQuerySpec(**kwargs), DATASET)
+    if kwargs["target_metric"] == "AVERAGE_TRANSACTION":
+        assert "average transaction" in r.summary
+    else:
+        assert f"per {kwargs['temporal_grain'].lower().replace('_', ' ')}" in r.summary
+
+
+def test_prd_p1_matches_uber_eats_canonically():
+    r = execute_spec_compute(FinancialQuerySpec(**PRD_PROMPT_SPECS["P1 avg uber eats monthly spend"]), DATASET)
+    assert r.matched_merchants == ["UBER *EATS"]
+    assert r.value > 0
+
+
+def test_prd_p6_exclusion_semantics():
+    r = execute_spec_compute(FinancialQuerySpec(**PRD_PROMPT_SPECS["P6 how often I order in weekly, excluding uber eats & church"]), DATASET)
+    assert "UBER *EATS" in r.matched_excluded_merchants
+    assert "grace city church" in r.unmatched_terms
+    assert r.value > 0
+
+
+def test_prd_p13_no_matching_category_is_honest_zero():
+    r = execute_spec_compute(FinancialQuerySpec(**PRD_PROMPT_SPECS["P13 avg monthly at bars/liquor/entertainment"]), DATASET)
+    assert r.value == 0.0
+    assert "Entertainment" in r.unmatched_terms
+
+
+def test_prd_p13_endpoint_offers_clarification_not_number():
+    response = client.post(
+        "/query",
+        json={"spec": PRD_PROMPT_SPECS["P13 avg monthly at bars/liquor/entertainment"]},
+    )
+    assert response.status_code == 422
+    assert response.json()["status"] == "entity_not_found"
+
+
+def test_prd_prompt15_synthesis_is_out_of_spec():
+    # "Describe my spending habits and make recommendations" → the parser marks
+    # is_out_of_spec; the endpoint must route it on, never compute.
+    response = client.post(
+        "/query",
+        json={
+            "spec": {
+                "target_metric": "PERIOD_AVERAGE",
+                "is_out_of_spec": True,
+                "out_of_spec_reason": "Synthesis/recommendation request.",
+            }
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "out_of_spec"
+    assert "value" not in response.json()

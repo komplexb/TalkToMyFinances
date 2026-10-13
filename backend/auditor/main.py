@@ -1,11 +1,14 @@
 import json
 import os
+import re
+from dataclasses import dataclass
 from datetime import date, timedelta
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from auditor.models import AuditReceipt, AuditResponse, DateWindow, FinancialQuerySpec, InsightChip
 
@@ -114,9 +117,80 @@ def _is_internal_transfer(tx: Dict[str, Any]) -> bool:
 
 
 def _is_spend(tx: Dict[str, Any]) -> bool:
-    # Deterministic invariant: only outgoing money counts as spend.
-    # (Refund netting is a separate tracked gap; credits are excluded here.)
+    # Deterministic invariant: only debits count as spend. Credits — income AND
+    # refunds/reversals — never do. Refunds are excluded outright rather than
+    # netted against their original transaction (netting is a tracked follow-up);
+    # the Audit Receipt always states this.
     return str(tx.get("type", "")).lower() == "debit" or float(tx.get("amount", 0)) < 0
+
+
+def canonical_merchant(tx: Dict[str, Any]) -> str:
+    """The ledger's canonical name for a transaction's counterparty."""
+    return str(tx.get("merchantName") or tx.get("description") or "").strip()
+
+
+def _normalize(value: str) -> str:
+    """Lowercase and collapse punctuation/whitespace so 'Uber Eats' matches 'UBER *EATS'."""
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+@dataclass(frozen=True)
+class LedgerVocabulary:
+    """The distinct merchant names and categories actually present in the ledger."""
+
+    merchants: List[str]
+    categories: List[str]
+
+
+def build_vocabulary(transactions: List[Dict[str, Any]]) -> LedgerVocabulary:
+    merchants = sorted({canonical_merchant(t) for t in transactions if canonical_merchant(t)})
+    categories = sorted({str(t.get("category", "")).strip() for t in transactions if t.get("category")})
+    return LedgerVocabulary(merchants=merchants, categories=categories)
+
+
+def ground_terms(terms: List[str], vocabulary: List[str]) -> tuple[List[str], List[str]]:
+    """Ground user-supplied terms against the ledger's actual vocabulary.
+
+    Case- and punctuation-insensitive substring match (so "uber" resolves to both
+    UBER and UBER *EATS — the receipt echoes exactly which names matched).
+    Returns (matched canonical names, unmatched terms).
+    """
+    matched: List[str] = []
+    unmatched: List[str] = []
+    for term in terms:
+        needle = _normalize(term)
+        hits = [v for v in vocabulary if needle in _normalize(v)]
+        if hits:
+            matched.extend(hits)
+        else:
+            unmatched.append(term)
+    return sorted(set(matched)), list(dict.fromkeys(unmatched))
+
+
+def _resolve_pay_cycle_days(pay_frequency: str) -> int:
+    return 14 if pay_frequency.upper().startswith("FORT") else 7
+
+
+def _bucket_key(
+    d: date,
+    grain: str,
+    anchor: date,
+    pay_frequency: str,
+    next_pay_date: Optional[str],
+) -> str:
+    if grain == "WEEK":
+        iso = d.isocalendar()
+        return f"{iso[0]}-W{iso[1]:02d}"
+    if grain == "MONTH":
+        return f"{d.year}-{d.month:02d}"
+    if grain == "QUARTER":
+        return f"{d.year}-Q{(d.month - 1) // 3 + 1}"
+    if grain == "YEAR":
+        return str(d.year)
+    # PAY_CYCLE: 14-day (fortnightly) or 7-day (weekly) buckets aligned to the pay date
+    cycle_days = _resolve_pay_cycle_days(pay_frequency)
+    base = _parse_date(next_pay_date) if next_pay_date else anchor
+    return f"C{(d - base).days // cycle_days}"
 
 
 def resolve_window(
@@ -150,28 +224,6 @@ def resolve_window(
     return start, end
 
 
-def _bucket_key(
-    d: date,
-    grain: str,
-    anchor: date,
-    pay_frequency: str,
-    next_pay_date: Optional[str],
-) -> str:
-    if grain == "WEEK":
-        iso = d.isocalendar()
-        return f"{iso[0]}-W{iso[1]:02d}"
-    if grain == "MONTH":
-        return f"{d.year}-{d.month:02d}"
-    if grain == "QUARTER":
-        return f"{d.year}-Q{(d.month - 1) // 3 + 1}"
-    if grain == "YEAR":
-        return str(d.year)
-    # PAY_CYCLE: 14-day (fortnightly) or 7-day (weekly) buckets aligned to the pay date
-    cycle_days = 14 if (pay_frequency or "FORTNIGHTLY").upper().startswith("FORT") else 7
-    base = _parse_date(next_pay_date) if next_pay_date else anchor
-    return f"C{(d - base).days // cycle_days}"
-
-
 def _calendar_periods(
     start: date,
     end: date,
@@ -197,7 +249,14 @@ def execute_spec_compute(
     pay_frequency: str = "FORTNIGHTLY",
     next_pay_date: Optional[str] = None,
 ) -> AuditReceipt:
-    """Executes a FinancialQuerySpec deterministically over the ledger."""
+    """Executes a FinancialQuerySpec deterministically over the ledger.
+
+    Pure function of (spec, ledger) — no LLM in this path.
+    """
+    if spec.is_out_of_spec:
+        # Guard invariant: no code path ever computes a number from an out-of-spec spec.
+        raise ValueError("This question is beyond what I can verify with the audited math primitives.")
+
     dated = [(_parse_date(tx["date"]), tx) for tx in transactions if tx.get("date")]
     if not dated:
         raise ValueError("Ledger contains no dated transactions.")
@@ -206,6 +265,20 @@ def execute_spec_compute(
     anchor = ledger_max
 
     win_start, win_end = resolve_window(spec, anchor, ledger_min, ledger_max)
+
+    # Ground requested entities against the ledger's actual vocabulary (gap 4):
+    # matches are resolved to canonical names and echoed in the receipt.
+    vocab = build_vocabulary(transactions)
+    inc_merchants, unmatched_inc_m = ground_terms(spec.included_merchants, vocab.merchants)
+    excl_merchants, unmatched_excl_m = ground_terms(spec.excluded_merchants, vocab.merchants)
+    inc_categories, unmatched_inc_c = ground_terms(spec.included_categories, vocab.categories)
+    excl_categories, unmatched_excl_c = ground_terms(spec.excluded_categories, vocab.categories)
+    unmatched_terms = unmatched_inc_m + unmatched_excl_m + unmatched_inc_c + unmatched_excl_c
+
+    inc_m_set = {_normalize(m) for m in inc_merchants}
+    excl_m_set = {_normalize(m) for m in excl_merchants}
+    inc_c_set = {_normalize(c) for c in inc_categories}
+    excl_c_set = {_normalize(c) for c in excl_categories}
 
     filtered: List[tuple[date, Dict[str, Any]]] = []
     for d, tx in dated:
@@ -217,15 +290,17 @@ def execute_spec_compute(
             continue
         if not _is_spend(tx):
             continue
-        merchant = str(tx.get("merchantName") or tx.get("description", "")).lower()
-        category = str(tx.get("category", "")).lower()
-        if spec.included_merchants and not any(m.lower() in merchant for m in spec.included_merchants):
+        name = _normalize(canonical_merchant(tx))
+        # Key off the spec (not the derived set) so an unmatched inclusion
+        # counts NOTHING rather than silently everything.
+        if spec.included_merchants and name not in inc_m_set:
             continue
-        if any(m.lower() in merchant for m in spec.excluded_merchants):
+        if name in excl_m_set:
             continue
-        if spec.included_categories and not any(c.lower() in category for c in spec.included_categories):
+        category = _normalize(str(tx.get("category", "")))
+        if spec.included_categories and category not in inc_c_set:
             continue
-        if any(c.lower() in category for c in spec.excluded_categories):
+        if category in excl_c_set:
             continue
         filtered.append((d, tx))
 
@@ -250,6 +325,9 @@ def execute_spec_compute(
     elif spec.target_metric == "TRANSACTION_COUNT":
         val = count / denom
         core = f"on average {val:.1f} per {label} ({count} total)"
+    elif spec.target_metric == "AVERAGE_TRANSACTION":
+        val = total / count if count else 0.0
+        core = f"your average transaction was ${val:,.2f} ({count} transaction{'s' if count != 1 else ''}, ${total:,.2f} total)"
     elif spec.target_metric == "PERIOD_AVERAGE":
         val = per
         core = f"you averaged ${per:,.2f} per {label} (${total:,.2f} total)"
@@ -257,21 +335,45 @@ def execute_spec_compute(
         val = per * PERIODS_PER_YEAR[grain]
         core = f"your run rate is ${val:,.2f} per year (${per:,.2f} per {label})"
 
-    exclusions = []
+    # Audit receipt content: what was counted, what was excluded, and how.
+    counted_parts: List[str] = []
+    if spec.included_merchants:
+        counted_parts.append("merchants: " + (", ".join(inc_merchants) if inc_merchants else "no match found"))
+    if spec.included_categories:
+        counted_parts.append("categories: " + (", ".join(inc_categories) if inc_categories else "no match found"))
+    if not counted_parts:
+        counted_parts.append("all merchants")
+
+    exclusions: List[str] = []
     if spec.exclude_pending:
-        exclusions.append("pending")
+        exclusions.append("pending transactions")
     if spec.exclude_internal_transfers:
         exclusions.append("internal transfers")
-    exclusions.append("credits/refunds")
+    exclusions.append("credits, income and refunds")
     if spec.excluded_merchants:
-        exclusions.append("merchants: " + ", ".join(spec.excluded_merchants))
+        exclusions.append(
+            "merchants: "
+            + (
+                ", ".join(excl_merchants)
+                if excl_merchants
+                else ", ".join(f"'{t}' (no match)" for t in spec.excluded_merchants)
+            )
+        )
     if spec.excluded_categories:
-        exclusions.append("categories: " + ", ".join(spec.excluded_categories))
+        exclusions.append(
+            "categories: "
+            + (
+                ", ".join(excl_categories)
+                if excl_categories
+                else ", ".join(f"'{t}' (no match)" for t in spec.excluded_categories)
+            )
+        )
 
     window_desc = f"{win_start} to {win_end} ({spec.date_window.type})"
     summary = (
         f"{core.capitalize()}. Window: {window_desc}. "
-        f"Denominator: {denom_desc} ({spec.denominator_strategy}). Excluded: {'; '.join(exclusions)}."
+        f"Denominator: {denom_desc} ({spec.denominator_strategy}). "
+        f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
     )
 
     return AuditReceipt(
@@ -279,63 +381,129 @@ def execute_spec_compute(
         value=round(val, 2),
         periods_counted=denom,
         window=window_desc,
+        matched_merchants=inc_merchants,
+        matched_excluded_merchants=excl_merchants,
+        matched_categories=inc_categories,
+        unmatched_terms=unmatched_terms,
         spec=spec,
     )
 
 
-def _parse_query_with_llm(query: str) -> Optional[FinancialQuerySpec]:
-    """Intent Parser: maps a freeform query to a FinancialQuerySpec. Returns None on any failure."""
+def _parse_query_with_llm(query: str, transactions: List[Dict[str, Any]]) -> Optional[FinancialQuerySpec]:
+    """Intent Parser: maps a freeform query to a FinancialQuerySpec (ADR 0003 phase 1).
+
+    Uses structured output — the Pydantic schema is the contract, no fence-stripping.
+    Returns None on any failure; /query turns that into a clarification, never a guess.
+    """
     client = get_genai_client()
-    if not client:
+    if client is None:
         return None
+
+    vocab = build_vocabulary(transactions)
+    prompt = (
+        "You are the Intent Parser for a personal-finance app. "
+        "Parse the user's query into a FinancialQuerySpec JSON object.\n\n"
+        f"Query: \"{query}\"\n\n"
+        f"The user's ledger contains these merchants: {json.dumps(vocab.merchants)}.\n"
+        f"It contains these categories: {json.dumps(vocab.categories)}.\n\n"
+        "Field guide:\n"
+        "- target_metric: 'PERIOD_AVERAGE' (average spend per period), 'TOTAL_SUM', "
+        "'TRANSACTION_COUNT' (for 'how often / how many times'), "
+        "'AVERAGE_TRANSACTION' (for 'average order amount' style questions), or 'RUN_RATE' "
+        "(for 'if this keeps up / on track for' style questions).\n"
+        "- included_merchants / excluded_merchants: map anything the user mentions to the closest "
+        "merchant name(s) from the list above (e.g. 'Uber Eats' → 'UBER *EATS'). If the user talks "
+        "about kinds of places ('coffee shops', 'fast food') use included_categories / "
+        "excluded_categories with the closest category name(s) from the list.\n"
+        "- date_window: an object with 'type': 'LAST_MONTH' | 'LAST_30_DAYS' | 'THIS_QUARTER' | "
+        "'SIX_MONTHS' | 'YTD' | 'ALL_TIME' | 'CUSTOM' (plus 'start'/'end' as YYYY-MM-DD for CUSTOM). "
+        "Default to 'ALL_TIME' unless the query names a period.\n"
+        "- temporal_grain: the period the user asks about, 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'.\n"
+        "- denominator_strategy: 'ACTIVE_PERIODS_ONLY' (default: divide by periods with spend) or "
+        "'ALL_CALENDAR_PERIODS' (divide by every period in the window).\n"
+        "- exclude_pending / exclude_internal_transfers: keep true.\n"
+        "- If the query is NOT a verifiable calculation over past transactions — e.g. asking you to "
+        "describe spending habits, give recommendations, or simulate a 'what if' scenario — set "
+        '"is_out_of_spec": true with a one-line "out_of_spec_reason", and leave all other fields at '
+        "their defaults.\n"
+        "Return ONLY the JSON object."
+    )
     try:
-        prompt = (
-            f"You are an Intent Parser for financial queries. Parse the following query into a JSON object:\n"
-            f"Query: \"{query}\"\n\n"
-            f"JSON Schema details:\n"
-            f"- target_metric: 'PERIOD_AVERAGE' | 'TOTAL_SUM' | 'TRANSACTION_COUNT' | 'RUN_RATE' "
-            f"(TRANSACTION_COUNT for 'how often / how many times'; PERIOD_AVERAGE for 'average spend')\n"
-            f"- included_merchants: list of strings (e.g., ['Uber Eats'])\n"
-            f"- excluded_merchants: list of strings\n"
-            f"- included_categories: list of strings\n"
-            f"- excluded_categories: list of strings\n"
-            f"- date_window: object with 'type': 'LAST_MONTH' | 'LAST_30_DAYS' | 'THIS_QUARTER' | "
-            f"'SIX_MONTHS' | 'YTD' | 'ALL_TIME' | 'CUSTOM', plus 'start'/'end' (YYYY-MM-DD) for CUSTOM. "
-            f"Default to 'ALL_TIME' unless the query names a period.\n"
-            f"- temporal_grain: 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'\n"
-            f"- denominator_strategy: 'ACTIVE_PERIODS_ONLY' | 'ALL_CALENDAR_PERIODS' (default ACTIVE_PERIODS_ONLY)\n"
-            f"- exclude_pending: boolean (default true)\n"
-            f"- exclude_internal_transfers: boolean (default true)\n"
-            f"Return ONLY valid JSON."
+        from google.genai import types
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=FinancialQuerySpec,
+            ),
         )
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
         if response and response.text:
-            clean_text = response.text.replace("```json", "").replace("```", "").strip()
-            return FinancialQuerySpec.model_validate_json(clean_text)
+            return FinancialQuerySpec.model_validate_json(response.text)
     except Exception:
         return None
     return None
 
 
+def _typed_error(status_code: int, status: str, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"status": status, "message": message})
+
+
+def _closest_matches(term: str, vocabulary: List[str], n: int = 3) -> List[str]:
+    pool = {v.lower(): v for v in vocabulary}
+    return [pool[m] for m in get_close_matches(term.lower(), list(pool), n=n, cutoff=0.6)]
+
+
 @app.post("/query")
 def run_query(req: QueryRequest) -> Response:
-    """Parser-Spec-Compute endpoint for out-of-catalog financial math."""
+    """Parser-Spec-Compute endpoint for out-of-catalog financial math (ADR 0003).
+
+    The only non-deterministic step is the LLM parse (when a raw `query` is given).
+    Given a spec, the engine is pure and unit-tested: the LLM never does arithmetic.
+    """
+    transactions = load_transactions()
+    vocab = build_vocabulary(transactions)
+
     spec = req.spec
     if spec is None:
         if not req.query:
-            return JSONResponse(
-                status_code=422,
-                content={"status": "unparseable", "message": "Provide either a natural-language query or a parsed FinancialQuerySpec."},
-            )
-        spec = _parse_query_with_llm(req.query)
+            return _typed_error(422, "unparseable", "Give me a question about your spending, or a parsed spec.")
+        spec = _parse_query_with_llm(req.query, transactions)
     if spec is None:
         # Never guess: a fallback spec would produce a confident, unverifiable number.
-        return JSONResponse(
-            status_code=422,
-            content={"status": "unparseable", "message": "I couldn't work out exactly what to calculate — could you rephrase that?"},
+        return _typed_error(
+            422,
+            "unparseable",
+            "I couldn't work out exactly what to calculate — could you rephrase that?",
         )
+    if spec.is_out_of_spec:
+        # Synthesis/advice/simulation queries don't map to any audited primitive:
+        # route them on (the Translation Agent narrates) instead of forcing a number.
+        return JSONResponse(
+            {
+                "status": "out_of_spec",
+                "reason": spec.out_of_spec_reason or "That's beyond what I can verify from your transactions.",
+            }
+        )
+
+    # Ground the requested *inclusions* against the ledger: a hallucinated entity
+    # surfaces as a clarification, never a confident zero (gap 4).
+    unmatched = ground_terms(spec.included_merchants, vocab.merchants)[1] + ground_terms(
+        spec.included_categories, vocab.categories
+    )[1]
+    if unmatched:
+        suggestions = sorted(
+            {s for t in unmatched for s in _closest_matches(t, vocab.merchants + vocab.categories)}
+        )
+        message = f"I couldn't find {', '.join(repr(t) for t in unmatched)} in your transactions."
+        if suggestions:
+            message += f" Did you mean: {', '.join(suggestions)}?"
+        return _typed_error(422, "entity_not_found", message)
+
     try:
-        txs = load_transactions()
-        return execute_spec_compute(spec, txs, req.pay_frequency or "FORTNIGHTLY", req.next_pay_date)
+        return execute_spec_compute(
+            spec, transactions, req.pay_frequency or "FORTNIGHTLY", req.next_pay_date
+        )
     except ValueError as e:
-        return JSONResponse(status_code=422, content={"status": "uncomputable", "message": str(e)})
+        return _typed_error(422, "uncomputable", str(e))

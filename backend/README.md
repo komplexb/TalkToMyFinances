@@ -1,8 +1,7 @@
 # backend/ — Python data layer
 
-The data/ingestion half of **Talk to My Finances** (hackathon Domain B).
-Currently contains the local BankSync mock and its client; the deterministic
-auditor engine (PII scrubbing → 10 verified facts) lands here next.
+The data/ingestion half of **Talk to My Finances** (hackathon Domain B):
+the local BankSync mock, its client, and the deterministic auditor engine.
 
 ## Layout
 
@@ -15,11 +14,15 @@ backend/
     main.py                 FastAPI mock: key check, date filter, cursor paging
     data/generate.py        Deterministic dataset generator (seeded; anchored to --as-of)
     data/transactions.json  Generated data: ~13 months of synthetic AUD records
+  auditor/
+    main.py                 FastAPI: POST /audit (Curation Agent) + POST /query (Parser-Spec-Compute)
+    models.py               FinancialQuerySpec / AuditReceipt schemas (ADR 0003)
   tests/
-    test_mock.py            Behaviour + schema tests
+    test_mock.py            Behaviour + schema tests for the mock
+    test_auditor.py         Auditor tests (compute path is fully deterministic)
     transaction-response.schema.json  BankSync's published 200-response schema
   Dockerfile                Cloud Run image for the mock
-  cloudbuild.yaml           Build → push → deploy pipeline
+  cloudbuild.yaml           Build → push → deploy pipeline (mock)
   .env.example              Copy to .env (gitignored); dummy values only
 ```
 
@@ -68,6 +71,32 @@ uv run python mock_banksync/data/generate.py --as-of 2026-11-10
 
 Swagger UI: http://127.0.0.1:8000/docs
 
+## Auditor engine (`auditor/`) — ADR 0003
+
+The Python Auditor Engine behind the Insights and chat flows:
+
+- **`POST /audit`** — Curation Agent: picks 3 prompt chips (2 goal + 1 serendipity)
+  from the 10-Fact catalog, with a deterministic fallback when no LLM key is set.
+- **`POST /query`** — Parser-Spec-Compute for out-of-catalog math (issue #3, ADR 0003):
+  1. Gemini (structured output, schema-constrained) parses a freeform query into a
+     `FinancialQuerySpec` — or marks it `is_out_of_spec` (synthesis / "what if" queries);
+  2. the engine grounds the spec's entities against the ledger's real vocabulary
+     (a hallucinated merchant → 422 `entity_not_found` with "did you mean…");
+  3. a pure, unit-tested function computes the number — **the LLM never does arithmetic**;
+  4. the `AuditReceipt` echoes every assumption in plain English: matched entities,
+     exclusions, pending/refund handling, window, and denominator.
+  A pre-parsed `spec` may be posted directly (client-side parsing); the compute path
+  then needs no API key at all.
+
+Run it locally (the compute path works without any key):
+
+```powershell
+uv run -m uvicorn auditor.main:app --host 0.0.0.0 --port 8001
+```
+
+Add `GEMINI_API_KEY` to `.env` to enable the freeform-`query` parse path
+(and LLM-assisted chip selection in `/audit`).
+
 ## Deployment target (Cloud Run)
 
 `Dockerfile` + `cloudbuild.yaml` build the mock into an Artifact Registry image
@@ -90,6 +119,39 @@ gcloud builds submit backend --config backend/cloudbuild.yaml `
 - **`max-instances 1`** — the mock is stateless, so one instance (≈80 concurrent requests) is plenty for a prototype. Even a hammering caller tops out at one 512 Mi instance: a few cents an hour at full load, not unbounded.
 - The data behind the endpoint is synthetic; there is nothing worth stealing. The deploy-time key (never stored in this repo) is the only gate — if this ever serves real bank data, switch to IAP + a KMS secret (see the note in `cloudbuild.yaml`).
 - Before your first deploy: set a **billing budget alert** (GCP Console → Billing → Budgets, e.g. email me at $5) as a tripwire.
+
+## Deploying the auditor (ADR 0003)
+
+Same pattern as the mock — a second stateless Cloud Run service (`ttmf-auditor`):
+
+1. **Image.** The current `Dockerfile` copies only `mock_banksync/`. For the
+   auditor, add a variant (or an extra build stage in `cloudbuild.yaml`) that
+   copies `auditor/` + `mock_banksync/data/` (the compute path reads the
+   generated dataset from disk) and runs `uvicorn auditor.main:app`.
+2. **Secret.** Create the Gemini key as a secret, never a plain `--env`:
+
+   ```powershell
+   echo -n "<gemini-api-key>" | gcloud secrets create ttmf-gemini-key --data-file=-
+   ```
+3. **Deploy** (mirrors the mock's cloudbuild, with the secret attached):
+
+   ```powershell
+   gcloud run deploy ttmf-auditor \
+     --image <your-auditor-image> \
+     --region australia-southeast1 \
+     --min-instances 0 --max-instances 1 \
+     --secret ttmf-gemini-key:GEMINI_API_KEY
+   ```
+
+Notes:
+
+- The service works with **zero** API keys — the compute path and the
+  `/audit` deterministic fallback need no LLM; the key only enables freeform
+  query parsing and LLM-assisted chip selection.
+- The app's `insights_base_url` (ADR 0004) points at this service; the Android
+  app never talks to the mock directly.
+- The dataset is a frozen snapshot, so the service never goes stale — same
+  reasoning as the mock's pinned demo clock.
 
 ## Conventions
 
