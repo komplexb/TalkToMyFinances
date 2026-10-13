@@ -174,12 +174,26 @@ Deploy the Firestore security rules (`firestore.rules`) and Cloud Storage rules 
 npx -y firebase-tools@latest deploy --only firestore:rules,storage --project <PROD_PROJECT_ID>
 ```
 
-### 2. Deploy Cloud Run Python Backend
+### 2. Deploy Cloud Run Python Backend & Configure Secrets
 Build and deploy the Python Auditor & Curation backend (`backend/`) using Google Cloud Build:
 ```sh
 gcloud builds submit backend \
   --config backend/cloudbuild.yaml \
   --substitutions _MOCK_KEY=$(openssl rand -hex 16)
+```
+
+Ensure the Cloud Run service has access to your Gemini API Key (`GEMINI_API_KEY`) so the server-side Curation Agent and Intent Parser can execute LLM calls:
+```sh
+# Option A: Store as a secret in Google Cloud Secret Manager (Recommended)
+gcloud secrets create GEMINI_API_KEY --data-file=- <<< "<YOUR_GEMINI_API_KEY>"
+gcloud run services update ttmf-banksync-mock \
+  --region australia-southeast1 \
+  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
+
+# Option B: Set directly as an environment variable
+gcloud run services update ttmf-banksync-mock \
+  --region australia-southeast1 \
+  --set-env-vars GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
 ```
 After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
 
