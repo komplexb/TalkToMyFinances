@@ -514,4 +514,22 @@ class ChatDomainTest {
         val responseJson = response.response
         assertEquals("unsupported", (responseJson["status"] as? JsonPrimitive)?.content)
     }
+
+    @Test
+    fun failedToolCallExecutionReturnsErrorResponse() {
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = emptyMap(),
+            id = "call_err_111"
+        )
+
+        val response = LiveVoiceRepositoryImpl.createErrorResponse(functionCall, "Invalid payload format")
+        assertEquals("render_visual_card", response.name)
+        assertEquals("call_err_111", response.id)
+
+        val responseJson = response.response
+        assertEquals("error", (responseJson["status"] as? JsonPrimitive)?.content)
+        assertEquals("Invalid payload format", (responseJson["message"] as? JsonPrimitive)?.content)
+    }
 }
+

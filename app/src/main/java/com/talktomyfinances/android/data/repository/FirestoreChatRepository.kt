@@ -7,7 +7,7 @@ import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.ChatRepository
 import com.talktomyfinances.android.domain.MessageSender
-import com.talktomyfinances.android.domain.VisualCardPayload
+import com.talktomyfinances.android.domain.VisualCard
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
@@ -46,10 +46,10 @@ class FirestoreChatRepository @Inject constructor(
                                 null
                             }
                         } else null
-                        val visualCardJson = doc.getString("visualCardPayloadJson")
+                        val visualCardJson = doc.getString("visualCardJson") ?: doc.getString("visualCardPayloadJson")
                         val visualCard = if (!visualCardJson.isNullOrBlank()) {
                             try {
-                                json.decodeFromString<VisualCardPayload>(visualCardJson)
+                                json.decodeFromString<VisualCard>(visualCardJson)
                             } catch (_: Exception) {
                                 null
                             }
@@ -81,7 +81,9 @@ class FirestoreChatRepository @Inject constructor(
             data["auditReceiptJson"] = json.encodeToString(AuditReceipt.serializer(), message.auditReceipt)
         }
         if (message.visualCard != null) {
-            data["visualCardPayloadJson"] = json.encodeToString(VisualCardPayload.serializer(), message.visualCard)
+            val cardJson = json.encodeToString(VisualCard.serializer(), message.visualCard)
+            data["visualCardJson"] = cardJson
+            data["visualCardPayloadJson"] = cardJson
         }
 
         firestore.collection("users")

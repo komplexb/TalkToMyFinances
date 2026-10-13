@@ -15,6 +15,6 @@ data class ChatMessage(
     val sender: MessageSender = MessageSender.USER,
     val text: String = "",
     val auditReceipt: AuditReceipt? = null,
-    val visualCard: VisualCardPayload? = null,
+    val visualCard: VisualCard? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

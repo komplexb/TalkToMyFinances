@@ -24,6 +24,7 @@ import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.talktomyfinances.android.domain.LiveVoiceManager
 import com.talktomyfinances.android.domain.MessageSender
 import com.talktomyfinances.android.domain.TranscriptEvent
+import com.talktomyfinances.android.domain.VisualCard
 import com.talktomyfinances.android.domain.VisualCardPayload
 import com.talktomyfinances.android.domain.VoiceSessionStatus
 import com.talktomyfinances.android.domain.VoiceState
@@ -64,8 +65,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     private val _transcriptEvents = MutableSharedFlow<TranscriptEvent>(extraBufferCapacity = 64)
     override val transcriptEvents: SharedFlow<TranscriptEvent> = _transcriptEvents.asSharedFlow()
 
-    private val _visualCardEvents = MutableSharedFlow<VisualCardPayload>(extraBufferCapacity = 64)
-    override val visualCardEvents: SharedFlow<VisualCardPayload> = _visualCardEvents.asSharedFlow()
+    private val _visualCardEvents = MutableSharedFlow<VisualCard>(extraBufferCapacity = 64)
+    override val visualCardEvents: SharedFlow<VisualCard> = _visualCardEvents.asSharedFlow()
 
     private var liveSession: LiveSession? = null
 
@@ -216,14 +217,15 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     internal fun handleFunctionCall(call: FunctionCallPart): FunctionResponsePart {
         Log.d(TAG, "Tool call received: ${call.name} (id=${call.id}) args=${call.args}")
         if (call.name == RENDER_VISUAL_CARD_TOOL_NAME) {
-            try {
-                val payload = parseVisualCardCall(call)
-                val emitted = _visualCardEvents.tryEmit(payload)
-                Log.d(TAG, "Emitted visual card event: title='${payload.title}', emitted=$emitted")
+            return try {
+                val card = parseVisualCardCall(call)
+                val emitted = _visualCardEvents.tryEmit(card)
+                Log.d(TAG, "Emitted visual card event: title='${card.title}', emitted=$emitted")
+                createSuccessConfirmation(call)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse visual card payload: ${e.message}", e)
+                createErrorResponse(call, e.message ?: "Failed to parse visual card payload")
             }
-            return createSuccessConfirmation(call)
         }
         return createUnsupportedResponse(call)
     }
@@ -255,7 +257,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             )
         )
 
-        fun parseVisualCardCall(call: FunctionCallPart): VisualCardPayload {
+        fun parseVisualCardCall(call: FunctionCallPart): VisualCard {
             val cardTypeArg = (call.args["card_type"] as? JsonPrimitive)?.content
                 ?: (call.args["cardType"] as? JsonPrimitive)?.content
                 ?: "category_breakdown"
@@ -263,18 +265,18 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val payloadElement = call.args["payload"]
             val parsed = when (payloadElement) {
                 is JsonObject -> {
-                    json.decodeFromJsonElement(VisualCardPayload.serializer(), payloadElement)
+                    json.decodeFromJsonElement(VisualCard.serializer(), payloadElement)
                 }
                 is JsonPrimitive -> {
                     val raw = payloadElement.content.trim()
                     val clean = if (raw.startsWith("```")) {
                         raw.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
                     } else raw
-                    json.decodeFromString(VisualCardPayload.serializer(), clean)
+                    json.decodeFromString(VisualCard.serializer(), clean)
                 }
                 else -> {
                     // Fallback: check if args itself is the payload
-                    json.decodeFromJsonElement(VisualCardPayload.serializer(), JsonObject(call.args))
+                    json.decodeFromJsonElement(VisualCard.serializer(), JsonObject(call.args))
                 }
             }
 
@@ -295,6 +297,17 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 response = buildJsonObject {
                     put("status", "success")
                     put("message", "Visual card successfully rendered on screen.")
+                },
+                id = call.id
+            )
+        }
+
+        fun createErrorResponse(call: FunctionCallPart, errorMessage: String): FunctionResponsePart {
+            return FunctionResponsePart(
+                name = call.name,
+                response = buildJsonObject {
+                    put("status", "error")
+                    put("message", errorMessage)
                 },
                 id = call.id
             )

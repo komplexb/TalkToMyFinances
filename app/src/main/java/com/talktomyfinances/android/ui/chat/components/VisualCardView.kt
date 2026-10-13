@@ -119,7 +119,7 @@ fun VisualCardView(
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                         ) {
                             Text(
-                                text = formatCardType(visualCard.cardType),
+                                text = visualCard.type.displayLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
@@ -281,38 +281,33 @@ private fun VisualCardItemRow(
                     )
                 }
 
+                val primaryText = if (showPercentageEmphasis) {
+                    item.percentage?.let { String.format("%.1f%%", it) } ?: String.format("$%.2f", item.amount)
+                } else {
+                    String.format("$%.2f", item.amount)
+                }
+                val secondaryText = if (showPercentageEmphasis) {
+                    String.format("($%.2f)", item.amount)
+                } else {
+                    item.percentage?.let { String.format("(%.1f%%)", it) }
+                }
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (showPercentageEmphasis) {
-                        item.percentage?.let { pct ->
-                            Text(
-                                text = String.format("%.1f%%", pct),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                    Text(
+                        text = primaryText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (showPercentageEmphasis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
+                    if (secondaryText != null) {
                         Text(
-                            text = String.format("($%.2f)", item.amount),
+                            text = secondaryText,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    } else {
-                        Text(
-                            text = String.format("$%.2f", item.amount),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        item.percentage?.let { pct ->
-                            Text(
-                                text = String.format("(%.1f%%)", pct),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
             }
@@ -418,14 +413,5 @@ private fun VisualCardAuditReceipt(receipt: AuditReceipt) {
                 }
             }
         }
-    }
-}
-
-private fun formatCardType(type: String): String {
-    return when (type.lowercase()) {
-        "category_breakdown" -> "Category Breakdown"
-        "spending_trend" -> "Spending Trend"
-        "monthly_average" -> "Monthly Average"
-        else -> type.replace('_', ' ').replaceFirstChar { it.uppercase() }
     }
 }
