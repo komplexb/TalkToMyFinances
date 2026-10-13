@@ -41,5 +41,5 @@ The architectural pattern for out-of-catalog financial queries where an LLM (Int
 _Avoid_: On-the-fly code generation, prompt-based math
 
 **FinancialQuerySpec**:
-A strongly-typed schema (capturing target metric, entity inclusions/exclusions, temporal grain, and denominator policy) populated by the LLM and executed by the Auditor Engine.
+A strongly-typed schema (capturing target metric, entity inclusions/exclusions, date window, temporal grain, and denominator policy) populated by the LLM and executed by the Auditor Engine.
 _Avoid_: JSON payload, function call args
