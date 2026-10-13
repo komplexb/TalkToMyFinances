@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.firebase.ai.FirebaseAI
+import com.google.firebase.ai.type.AudioTranscriptionConfig
 import com.google.firebase.ai.type.LiveSession
 import com.google.firebase.ai.type.PublicPreviewAPI
 import com.google.firebase.ai.type.ResponseModality
@@ -72,8 +73,11 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val liveConfig = liveGenerationConfig {
                 speechConfig = SpeechConfig(voice = Voice(DEFAULT_VOICE))
                 responseModality = ResponseModality.AUDIO
+                inputAudioTranscription = AudioTranscriptionConfig()
+                outputAudioTranscription = AudioTranscriptionConfig()
             }
 
+            Log.d(TAG, "Connecting liveModel with model=$modelName")
             val liveModel = aiModel.liveModel(
                 modelName = modelName,
                 generationConfig = liveConfig,
@@ -82,14 +86,18 @@ class LiveVoiceRepositoryImpl @Inject constructor(
 
             val session = liveModel.connect()
             liveSession = session
+            _voiceState.value = VoiceState(status = VoiceSessionStatus.LISTENING)
+            Log.d(TAG, "LiveSession connected and primed to LISTENING")
 
             var currentUserTranscript = ""
             var currentAssistantTranscript = ""
 
             scope.launch {
                 try {
+                    Log.d(TAG, "Starting audio conversation...")
                     session.startAudioConversation(
                         transcriptHandler = { inputTranscription, outputTranscription ->
+                            Log.d(TAG, "transcriptHandler called: input='${inputTranscription?.text}', output='${outputTranscription?.text}'")
                             inputTranscription?.text?.let { text ->
                                 if (text.isNotBlank()) {
                                     if (currentAssistantTranscript.isNotBlank()) {
@@ -177,9 +185,17 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     }
 
     override fun setMuted(muted: Boolean) {
-        _voiceState.value = _voiceState.value.copy(
+        val current = _voiceState.value
+        val newStatus = when {
+            muted -> VoiceSessionStatus.MUTED
+            current.status == VoiceSessionStatus.MUTED -> {
+                if (liveSession != null) VoiceSessionStatus.LISTENING else VoiceSessionStatus.CONNECTING
+            }
+            else -> current.status
+        }
+        _voiceState.value = current.copy(
             isMuted = muted,
-            status = if (muted) VoiceSessionStatus.MUTED else VoiceSessionStatus.LISTENING
+            status = newStatus
         )
     }
 

@@ -19,16 +19,17 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Sample data used until the Cloud Run Auditor endpoint is live. */
 open class StubInsightsRepository @Inject constructor() : InsightsRepository {
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult {
-        delay(3_000)
+        delay(3_000.milliseconds)
         return InsightsResult(
             listOf(
                 InsightChip("Nice work on your cafe spending this week. You have room for a cheeky brunch!", RecencyWindow.THIS_WEEK),
-                InsightChip("You have \$35 ready if you want Friday night pizza.", RecencyWindow.THIS_PAY_CYCLE),
-                InsightChip("Your utility bills came in \$140 lower this quarter. Want to see why?", RecencyWindow.THIS_QUARTER, isSerendipity = true)
+                InsightChip($$"You have $35 ready if you want Friday night pizza.", RecencyWindow.THIS_PAY_CYCLE),
+                InsightChip("Your utility bills came in $140 lower this quarter. Want to see why?", RecencyWindow.THIS_QUARTER, isSerendipity = true)
             )
         )
     }
