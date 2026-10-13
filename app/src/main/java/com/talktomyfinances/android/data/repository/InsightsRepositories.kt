@@ -21,7 +21,7 @@ import java.net.URL
 import javax.inject.Inject
 
 /** Sample data used until the Cloud Run Auditor endpoint is live. */
-class StubInsightsRepository @Inject constructor() : InsightsRepository {
+open class StubInsightsRepository @Inject constructor() : InsightsRepository {
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult {
         delay(3_000)
         return InsightsResult(
@@ -56,15 +56,31 @@ class CloudRunInsightsRepository(private val baseUrl: String) : InsightsReposito
         }
 }
 
-/** Uses Cloud Run when `insights_base_url` is set in Remote Config, otherwise the stub. */
+/** Uses Cloud Run when `insights_base_url` is set in Remote Config, falling back to the stub on failure or when blank. */
 class RoutingInsightsRepository @Inject constructor(
-    private val remoteConfig: FirebaseRemoteConfig,
+    private val remoteConfig: FirebaseRemoteConfig?,
     private val stub: StubInsightsRepository
 ) : InsightsRepository {
+
+    constructor(stub: StubInsightsRepository, urlProvider: () -> String) : this(null, stub) {
+        this.urlProvider = urlProvider
+    }
+
+    internal var urlProvider: () -> String = { remoteConfig?.getString("insights_base_url").orEmpty() }
+
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult {
-        val url = remoteConfig.getString("insights_base_url")
-        val delegate = if (url.isBlank()) stub else CloudRunInsightsRepository(url)
-        return delegate.loadInsights(profile)
+        val url = urlProvider().trim()
+        if (url.isBlank()) return stub.loadInsights(profile)
+        return try {
+            CloudRunInsightsRepository(url).loadInsights(profile)
+        } catch (e: Exception) {
+            try {
+                android.util.Log.w("Insights", "Failed to load insights from $url, falling back to stub", e)
+            } catch (_: Throwable) {
+                // Ignore log error in unmocked unit tests
+            }
+            stub.loadInsights(profile)
+        }
     }
 }
 
