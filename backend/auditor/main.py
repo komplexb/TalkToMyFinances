@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,7 @@ from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
 from auditor.models import AuditReceipt, AuditResponse, FinancialQuerySpec, InsightChip
 
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
 
 app = FastAPI(title="TalkToMyFinances Auditor & Curation API", version="0.1.0")
