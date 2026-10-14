@@ -84,9 +84,10 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         try {
             val modelName = remoteConfig.getString(LIVE_MODEL_NAME_KEY).ifBlank { DEFAULT_LIVE_MODEL }
             val systemPrompt = remoteConfig.getString(LIVE_MODEL_PROMPT_KEY)
+            val voiceName = remoteConfig.getString(LIVE_MODEL_VOICE_KEY).ifBlank { DEFAULT_VOICE }
 
             val liveConfig = liveGenerationConfig {
-                speechConfig = SpeechConfig(voice = Voice(DEFAULT_VOICE))
+                speechConfig = SpeechConfig(voice = Voice(voiceName))
                 responseModality = ResponseModality.AUDIO
                 inputAudioTranscription = AudioTranscriptionConfig()
                 outputAudioTranscription = AudioTranscriptionConfig()
@@ -234,6 +235,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         private const val TAG = "LiveVoiceRepo"
         private const val LIVE_MODEL_NAME_KEY = "live_model_name"
         private const val LIVE_MODEL_PROMPT_KEY = "live_model_prompt"
+        private const val LIVE_MODEL_VOICE_KEY = "live_model_voice"
         private const val DEFAULT_LIVE_MODEL = "gemini-3.1-flash-live-preview"
         private const val DEFAULT_VOICE = "Puck"
         const val RENDER_VISUAL_CARD_TOOL_NAME = "render_visual_card"
@@ -251,11 +253,57 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                     description = "Renders an interactive inline visual card on screen with detailed financial category breakdowns, spending trends, and deterministic audit receipt.",
                     parameters = mapOf(
                         "card_type" to Schema.string("The type of visual card to render, such as category_breakdown, spending_trend, or monthly_average."),
-                        "payload" to Schema.string("The complete JSON payload containing title, total_amount, items (list of category, amount, percentage), timeframe, and audit_receipt.")
+                        "payload" to Schema.obj(
+                            properties = mapOf(
+                                "card_type" to Schema.string("The card type identifier."),
+                                "title" to Schema.string("The title of the visual card."),
+                                "total_amount" to Schema.double("The total calculated dollar amount."),
+                                "timeframe" to Schema.string("The timeframe description, e.g. This Month."),
+                                "items" to Schema.array(
+                                    items = Schema.obj(
+                                        properties = mapOf(
+                                            "category" to Schema.string("The category name."),
+                                            "amount" to Schema.double("The dollar amount."),
+                                            "percentage" to Schema.double("The percentage of total.")
+                                        ),
+                                        optionalProperties = listOf("percentage")
+                                    ),
+                                    description = "List of category breakdown items."
+                                ),
+                                "audit_receipt" to Schema.obj(
+                                    properties = mapOf(
+                                        "summary" to Schema.string("Deterministic calculation summary text."),
+                                        "value" to Schema.double("Verified total dollar metric.")
+                                    ),
+                                    optionalProperties = listOf("value"),
+                                    description = "Deterministic audit receipt containing summary and value object."
+                                )
+                            ),
+                            optionalProperties = listOf("card_type", "total_amount", "timeframe", "items", "audit_receipt"),
+                            description = "The structured visual card payload object containing title, total_amount, items, timeframe, and audit_receipt."
+                        )
                     )
                 )
             )
         )
+
+        fun sanitizePayloadObject(obj: JsonObject): JsonObject {
+            val auditReceiptElement = obj["audit_receipt"] ?: obj["auditReceipt"]
+            if (auditReceiptElement is JsonPrimitive && auditReceiptElement.isString) {
+                val receiptSummary = auditReceiptElement.content
+                val totalVal = (obj["total_amount"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    ?: (obj["totalAmount"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+
+                val receiptObj = buildJsonObject {
+                    put("summary", receiptSummary)
+                    totalVal?.let { put("value", it) }
+                }
+                val mutableMap = obj.toMutableMap()
+                mutableMap["audit_receipt"] = receiptObj
+                return JsonObject(mutableMap)
+            }
+            return obj
+        }
 
         fun parseVisualCardCall(call: FunctionCallPart): VisualCard {
             val cardTypeArg = (call.args["card_type"] as? JsonPrimitive)?.content
@@ -265,18 +313,28 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val payloadElement = call.args["payload"]
             val parsed = when (payloadElement) {
                 is JsonObject -> {
-                    json.decodeFromJsonElement(VisualCard.serializer(), payloadElement)
+                    val sanitized = sanitizePayloadObject(payloadElement)
+                    json.decodeFromJsonElement(VisualCard.serializer(), sanitized)
                 }
                 is JsonPrimitive -> {
                     val raw = payloadElement.content.trim()
                     val clean = if (raw.startsWith("```")) {
                         raw.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
                     } else raw
-                    json.decodeFromString(VisualCard.serializer(), clean)
+
+                    val jsonElement = runCatching { json.parseToJsonElement(clean) }.getOrNull()
+                    if (jsonElement is JsonObject) {
+                        val sanitized = sanitizePayloadObject(jsonElement)
+                        json.decodeFromJsonElement(VisualCard.serializer(), sanitized)
+                    } else {
+                        json.decodeFromString(VisualCard.serializer(), clean)
+                    }
                 }
                 else -> {
                     // Fallback: check if args itself is the payload
-                    json.decodeFromJsonElement(VisualCard.serializer(), JsonObject(call.args))
+                    val jsonObj = JsonObject(call.args)
+                    val sanitized = sanitizePayloadObject(jsonObj)
+                    json.decodeFromJsonElement(VisualCard.serializer(), sanitized)
                 }
             }
 

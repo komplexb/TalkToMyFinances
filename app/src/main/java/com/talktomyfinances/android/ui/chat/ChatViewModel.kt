@@ -183,9 +183,13 @@ class ChatViewModel @Inject constructor(
             liveVoiceManager.visualCardEvents.collect { payload ->
                 val uid = getOrEnsureUserId() ?: return@collect
 
+                val title = payload.title.ifBlank { "spending breakdown" }
+                val timeframeSuffix = if (!payload.timeframe.isNullOrBlank()) " for ${payload.timeframe}" else ""
+                val summaryText = "Here is the $title$timeframeSuffix."
+
                 val chatMsg = ChatMessage(
                     sender = MessageSender.ASSISTANT,
-                    text = "I've popped that breakdown onto your screen so you can check it out whenever you're ready.",
+                    text = summaryText,
                     visualCard = payload,
                     auditReceipt = payload.auditReceipt
                 )

@@ -483,6 +483,37 @@ class ChatDomainTest {
     }
 
     @Test
+    fun primitiveStringAuditReceiptIsSanitizedIntoObjectWithoutError() {
+        val payloadWithPrimitiveReceipt = """
+            {
+              "title": "Monthly Spend",
+              "total_amount": 314.88,
+              "items": [
+                { "category": "Food", "amount": 314.88, "percentage": 100.0 }
+              ],
+              "audit_receipt": "Average monthly spend across 1 active month is $314.88"
+            }
+        """.trimIndent()
+
+        val functionCall = FunctionCallPart(
+            name = "render_visual_card",
+            args = mapOf(
+                "card_type" to JsonPrimitive("monthly_average"),
+                "payload" to JsonPrimitive(payloadWithPrimitiveReceipt)
+            ),
+            id = "call_prim_receipt"
+        )
+
+        val parsed = LiveVoiceRepositoryImpl.parseVisualCardCall(functionCall)
+        assertEquals("monthly_average", parsed.cardType)
+        assertEquals("Monthly Spend", parsed.title)
+        assertEquals(314.88, parsed.totalAmount ?: 0.0, 0.001)
+        assertNotNull(parsed.auditReceipt)
+        assertEquals("Average monthly spend across 1 active month is $314.88", parsed.auditReceipt?.summary)
+        assertEquals(314.88, parsed.auditReceipt?.value ?: 0.0, 0.001)
+    }
+
+    @Test
     fun mockToolCallExecutionReturnsClientConfirmation() {
         val functionCall = FunctionCallPart(
             name = "render_visual_card",
