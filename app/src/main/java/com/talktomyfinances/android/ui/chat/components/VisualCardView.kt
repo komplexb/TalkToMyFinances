@@ -1,6 +1,5 @@
 package com.talktomyfinances.android.ui.chat.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -16,14 +15,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,7 +37,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.talktomyfinances.android.R
-import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.VisualCardItemData
 import com.talktomyfinances.android.domain.VisualCardPayload
 
@@ -63,7 +58,6 @@ fun VisualCardView(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var selectedCategoryIndex by remember { mutableStateOf<Int?>(null) }
-    var showPercentageEmphasis by remember { mutableStateOf(false) }
 
     val displayItems = if (expanded || visualCard.items.size <= 4) {
         visualCard.items
@@ -157,31 +151,13 @@ fun VisualCardView(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Interactive mode hint & toggle
+            // Breakdown Items
             if (visualCard.items.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (selectedCategoryIndex != null) "Tapped category selected" else "Breakdown items",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.clickable { showPercentageEmphasis = !showPercentageEmphasis }
-                    ) {
-                        Text(
-                            text = if (showPercentageEmphasis) "View: % (tap for $)" else "View: $ (tap for %)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = if (selectedCategoryIndex != null) "Tapped category selected" else "Breakdown items",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -198,7 +174,6 @@ fun VisualCardView(
                             item = item,
                             accentColor = color,
                             isSelected = isSelected,
-                            showPercentageEmphasis = showPercentageEmphasis,
                             onClick = {
                                 selectedCategoryIndex = if (isSelected) null else index
                             }
@@ -219,14 +194,6 @@ fun VisualCardView(
                     }
                 }
             }
-
-            // Plain-English Audit Receipt Section
-            visualCard.auditReceipt?.let { receipt ->
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.height(10.dp))
-                VisualCardAuditReceipt(receipt = receipt)
-            }
         }
     }
 }
@@ -236,7 +203,6 @@ private fun VisualCardItemRow(
     item: VisualCardItemData,
     accentColor: Color,
     isSelected: Boolean,
-    showPercentageEmphasis: Boolean,
     onClick: () -> Unit
 ) {
     val progress = ((item.percentage ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
@@ -281,30 +247,19 @@ private fun VisualCardItemRow(
                     )
                 }
 
-                val primaryText = if (showPercentageEmphasis) {
-                    item.percentage?.let { String.format("%.1f%%", it) } ?: String.format("$%.2f", item.amount)
-                } else {
-                    String.format("$%.2f", item.amount)
-                }
-                val secondaryText = if (showPercentageEmphasis) {
-                    String.format("($%.2f)", item.amount)
-                } else {
-                    item.percentage?.let { String.format("(%.1f%%)", it) }
-                }
-
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = primaryText,
+                        text = String.format("$%.2f", item.amount),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (showPercentageEmphasis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (secondaryText != null) {
+                    item.percentage?.let { pct ->
                         Text(
-                            text = secondaryText,
+                            text = String.format("(%.1f%%)", pct),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -329,88 +284,6 @@ private fun VisualCardItemRow(
                         .clip(RoundedCornerShape(3.dp))
                         .background(accentColor)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VisualCardAuditReceipt(receipt: AuditReceipt) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_check),
-                        contentDescription = "Verified",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(10.dp)
-                    )
-                }
-                Text(
-                    text = "Deterministic Math Audit Receipt",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = receipt.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                receipt.value?.let { v ->
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                    ) {
-                        Text(
-                            text = String.format("Metric: $%.2f", v),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                ) {
-                    Text(
-                        text = "0 LLM Arithmetic",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
             }
         }
     }
