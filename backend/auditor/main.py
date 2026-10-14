@@ -12,6 +12,11 @@ from pydantic import BaseModel
 
 from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
 from auditor.models import AuditReceipt, AuditResponse, DateWindow, FinancialQuerySpec, InsightChip
+from auditor.prompt_templates import render_prompt
+
+# prompts/intent-parser-template-v1-0-0.prompt — the Intent Parser's system prompt
+# lives in a template file, not in this module.
+INTENT_PARSER_TEMPLATE = "intent-parser-template-v1-0-0"
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
@@ -401,34 +406,19 @@ def _parse_query_with_llm(query: str, transactions: List[Dict[str, Any]]) -> Opt
         return None
 
     vocab = build_vocabulary(transactions)
-    prompt = (
-        "You are the Intent Parser for a personal-finance app. "
-        "Parse the user's query into a FinancialQuerySpec JSON object.\n\n"
-        f"Query: \"{query}\"\n\n"
-        f"The user's ledger contains these merchants: {json.dumps(vocab.merchants)}.\n"
-        f"It contains these categories: {json.dumps(vocab.categories)}.\n\n"
-        "Field guide:\n"
-        "- target_metric: 'PERIOD_AVERAGE' (average spend per period), 'TOTAL_SUM', "
-        "'TRANSACTION_COUNT' (for 'how often / how many times'), "
-        "'AVERAGE_TRANSACTION' (for 'average order amount' style questions), or 'RUN_RATE' "
-        "(for 'if this keeps up / on track for' style questions).\n"
-        "- included_merchants / excluded_merchants: map anything the user mentions to the closest "
-        "merchant name(s) from the list above (e.g. 'Uber Eats' → 'UBER *EATS'). If the user talks "
-        "about kinds of places ('coffee shops', 'fast food') use included_categories / "
-        "excluded_categories with the closest category name(s) from the list.\n"
-        "- date_window: an object with 'type': 'LAST_MONTH' | 'LAST_30_DAYS' | 'THIS_QUARTER' | "
-        "'SIX_MONTHS' | 'YTD' | 'ALL_TIME' | 'CUSTOM' (plus 'start'/'end' as YYYY-MM-DD for CUSTOM). "
-        "Default to 'ALL_TIME' unless the query names a period.\n"
-        "- temporal_grain: the period the user asks about, 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'.\n"
-        "- denominator_strategy: 'ACTIVE_PERIODS_ONLY' (default: divide by periods with spend) or "
-        "'ALL_CALENDAR_PERIODS' (divide by every period in the window).\n"
-        "- exclude_pending / exclude_internal_transfers: keep true.\n"
-        "- If the query is NOT a verifiable calculation over past transactions — e.g. asking you to "
-        "describe spending habits, give recommendations, or simulate a 'what if' scenario — set "
-        '"is_out_of_spec": true with a one-line "out_of_spec_reason", and leave all other fields at '
-        "their defaults.\n"
-        "Return ONLY the JSON object."
-    )
+    try:
+        prompt = render_prompt(
+            INTENT_PARSER_TEMPLATE,
+            {
+                "query": query,
+                "merchants": json.dumps(vocab.merchants),
+                "categories": json.dumps(vocab.categories),
+            },
+        )
+    except Exception:
+        # Missing/malformed template is a parse failure, not a crash:
+        # /query turns None into a clarification, never a 500.
+        return None
     try:
         from google.genai import types
 
