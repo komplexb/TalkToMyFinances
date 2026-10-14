@@ -76,12 +76,14 @@ If your project lead or admin has already created and configured the Firebase ba
      npx -y firebase-tools@latest apps:sdkconfig ANDROID <APP_ID> --project <PROJECT_ID> > app/google-services.json
      ```
 3. **Register App Check Debug Token** *(For Emulators/Local Dev)*:
-   - Run the app on an emulator and locate the secret printed in Logcat:
+   - Each emulator generates a unique debug token on its first run.
+   - Launch the app on your emulator and check Android Studio **Logcat** (filter for `DebugAppCheckProvider`):
      ```text
      DebugAppCheckProvider: Enter this debug secret into the allow list
-     in the Firebase Console for your project: (secret).
+     in the Firebase Console for your project: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
      ```
-   - In [Firebase Console > App Check > Apps](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click the three dots for `com.talktomyfinances.android` > **Manage debug tokens** > add secret and save.
+   - In [Firebase Console > App Check > Apps](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click the three dots (`⋮`) for `com.talktomyfinances.android` > **Manage debug tokens** > click **Add debug token**, paste your secret UUID, and save.
+   - *Note*: If this token is not registered, Firebase App Check will block backend requests (e.g. after entering your pay date during onboarding), causing network calls to fail or freeze.
 
 ---
 
@@ -123,8 +125,14 @@ If you are setting up a brand-new Firebase project from scratch for **Talk to My
      npx -y firebase-tools@latest deploy --only storage --project <YOUR_PROJECT_ID>
      ```
 
-5. **Configure App Check & Debug Tokens**:
-   - Register Play Integrity with your SHA-256 fingerprint (`./gradlew signingReport`) under [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true). Add your emulator debug token under **Manage debug tokens**.
+5. **Configure App Check & Debug Tokens** *(For Production & Local Dev)*:
+   - For Production: Register Play Integrity with your SHA-256 fingerprint (`./gradlew signingReport`) under [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true).
+   - For Local Emulator Dev: Launch the app on your emulator, search Android Studio **Logcat** for `DebugAppCheckProvider` to find your generated debug secret UUID:
+     ```text
+     DebugAppCheckProvider: Enter this debug secret into the allow list
+     in the Firebase Console for your project: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+     ```
+   - In [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click `com.talktomyfinances.android` $\rightarrow$ **Manage debug tokens** $\rightarrow$ **Add debug token**, paste the UUID secret, and save. *(Note: Every device/emulator generates its own debug token; all developers running the app locally must register their respective token).*
 
 6. **Create Firebase AI Logic Prompt Templates**:
    - Enable the **Gemini Developer API** under [Firebase AI Logic Console](https://console.firebase.google.com/project/_/ailogic/?useAutoProject=true).
@@ -176,13 +184,13 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
 
 Instead of remembering paths or individual server flags, use the root shortcuts:
 
-| Task | Command | Description |
-| :--- | :--- | :--- |
-| **Start Dev Mode** | `make dev` *(or `npm run dev`)* | Configures `adb reverse` port forwarding and starts the backend server. |
-| **Backend Server** | `make backend` *(or `npm run backend`)* | Runs the Python uvicorn backend server on port 8000. |
-| **ADB Reverse** | `make reverse` *(or `npm run reverse`)* | Runs `adb reverse tcp:8000 tcp:8000` for physical devices/emulators. |
-| **Run All Tests** | `make test` *(or `npm run test`)* | Executes Android unit tests and Python backend tests. |
-| **Build Android** | `make build` *(or `npm run build`)* | Assembles the Android debug APK. |
+| Task               | Command                                 | Description                                                             |
+|:-------------------|:----------------------------------------|:------------------------------------------------------------------------|
+| **Start Dev Mode** | `make dev` *(or `npm run dev`)*         | Configures `adb reverse` port forwarding and starts the backend server. |
+| **Backend Server** | `make backend` *(or `npm run backend`)* | Runs the Python uvicorn backend server on port 8000.                    |
+| **ADB Reverse**    | `make reverse` *(or `npm run reverse`)* | Runs `adb reverse tcp:8000 tcp:8000` for physical devices/emulators.    |
+| **Run All Tests**  | `make test` *(or `npm run test`)*       | Executes Android unit tests and Python backend tests.                   |
+| **Build Android**  | `make build` *(or `npm run build`)*     | Assembles the Android debug APK.                                        |
 
 ---
 
@@ -190,6 +198,31 @@ Instead of remembering paths or individual server flags, use the root shortcuts:
 1. Open the project in Android Studio and run `app` on your Android Emulator or connected physical device.
 2. View real-time application logs in Android Studio **Logcat** using filter:
    `package:com.talktomyfinances.android level:error`
+
+---
+
+## 🔍 Troubleshooting
+
+### Emulator Connection Failure ("Emulator failed to connect within 5 minutes" / Freeze)
+If the Android emulator fails to boot, freezes on launch, or gives a `failed to connect within 5 minutes` error:
+
+1. **Clear Stuck Background Emulator Processes**:
+   Open Terminal on your Mac and run:
+   ```sh
+   pkill -9 qemu-system
+   pkill -9 emulator
+   adb kill-server && adb start-server
+   ```
+2. **Wipe Data and Cold Boot the Virtual Device**:
+   When an app crashes or freezes, Android Studio saves a corrupted Quick Boot snapshot that prevents future launches.
+   - In Android Studio, open **Device Manager** (right sidebar).
+   - Click the **three dots (`⋮`)** next to your emulator (e.g. `Medium Phone API 37.0`) $\rightarrow$ select **Wipe Data**.
+   - Click the **three dots (`⋮`)** again $\rightarrow$ select **Cold Boot Now**.
+
+### App Freezes / Network Errors After Pay Date Onboarding Step
+If the app errors or hangs after submitting your pay date on the onboarding screen:
+- This is caused by Firebase App Check blocking requests because your local emulator's unique debug token has not been registered in the Firebase Console yet.
+- Follow Step 3 in **Option A (Team Member Setup)** above to locate `DebugAppCheckProvider` in **Logcat** and register your debug token under **App Check > Manage debug tokens**.
 
 ---
 
