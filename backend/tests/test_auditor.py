@@ -416,3 +416,47 @@ def test_prd_prompt15_synthesis_is_out_of_spec():
     assert response.status_code == 200
     assert response.json()["status"] == "out_of_spec"
     assert "value" not in response.json()
+
+
+# ---------------------------------------------------------------------------
+# /compute endpoint (deterministic spec-in, receipt-out)
+# ---------------------------------------------------------------------------
+
+def test_compute_endpoint_total_sum():
+    payload = {
+        "target_metric": "TOTAL_SUM",
+        "included_merchants": ["Uber Eats"],
+        "excluded_merchants": [],
+        "included_categories": [],
+        "excluded_categories": [],
+        "temporal_grain": "MONTH",
+        "denominator_strategy": "ACTIVE_PERIODS_ONLY",
+        "exclude_pending": True,
+        "exclude_internal_transfers": True
+    }
+    response = client.post("/compute", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "summary" in data
+    assert "value" in data
+    assert data["spec"]["target_metric"] == "TOTAL_SUM"
+    assert "Uber Eats" in data["spec"]["included_merchants"]
+
+def test_compute_endpoint_period_average():
+    payload = {
+        "target_metric": "PERIOD_AVERAGE",
+        "included_merchants": [],
+        "excluded_merchants": [],
+        "included_categories": ["groceries"],
+        "excluded_categories": [],
+        "temporal_grain": "MONTH",
+        "denominator_strategy": "ACTIVE_PERIODS_ONLY",
+        "exclude_pending": True,
+        "exclude_internal_transfers": True
+    }
+    response = client.post("/compute", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "summary" in data
+    assert "value" in data
+    assert isinstance(data["value"], (int, float))

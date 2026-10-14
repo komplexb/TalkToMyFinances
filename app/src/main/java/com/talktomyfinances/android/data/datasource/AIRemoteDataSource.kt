@@ -25,6 +25,7 @@ import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.talktomyfinances.android.data.schema.MealSchema
 import com.talktomyfinances.android.data.schema.RecipeSchema
+import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.google.firebase.perf.performance
 import com.google.firebase.perf.trace
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
@@ -221,7 +222,86 @@ class AIRemoteDataSource @Inject constructor(
         }
     }
 
+    suspend fun parseFinancialIntent(prompt: String): FinancialQuerySpec {
+        val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
+        val model = aiModel.generativeModel(
+            modelName = modelName,
+            systemInstruction = content {
+                text(
+                    "You are an Intent Parser for financial queries in personal finance. " +
+                    "Map user queries into a JSON object matching this schema:\n" +
+                    "{\n" +
+                    "  \"target_metric\": \"PERIOD_AVERAGE\" | \"TOTAL_SUM\" | \"AVERAGE_TRANSACTION\" | \"TRANSACTION_COUNT\" | \"RUN_RATE\",\n" +
+                    "  \"included_merchants\": [string],\n" +
+                    "  \"excluded_merchants\": [string],\n" +
+                    "  \"included_categories\": [string],\n" +
+                    "  \"excluded_categories\": [string],\n" +
+                    "  \"date_window\": {\"type\": \"LAST_MONTH\" | \"LAST_30_DAYS\" | \"THIS_QUARTER\" | \"SIX_MONTHS\" | \"YTD\" | \"ALL_TIME\" | \"CUSTOM\", \"start\": string|null, \"end\": string|null},\n" +
+                    "  \"temporal_grain\": \"WEEK\" | \"PAY_CYCLE\" | \"MONTH\" | \"QUARTER\" | \"YEAR\",\n" +
+                    "  \"denominator_strategy\": \"ACTIVE_PERIODS_ONLY\" | \"ALL_CALENDAR_PERIODS\",\n" +
+                    "  \"exclude_pending\": true,\n" +
+                    "  \"exclude_internal_transfers\": true,\n" +
+                    "  \"is_out_of_spec\": false,\n" +
+                    "  \"out_of_spec_reason\": string|null\n" +
+                    "}\n" +
+                    "Rules:\n" +
+                    "- Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript.\n" +
+                    "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
+                    "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
+                    "- date_window: set type when the query names a period ('last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
+                    "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, or a 'what if' simulation — " +
+                    "set is_out_of_spec to true with a one-line out_of_spec_reason, and leave all other fields at their defaults."
+                )
+            }
+        )
+
+        return try {
+            val response = model.generateContent(prompt)
+            val raw = response.text ?: throw IllegalStateException("Empty response from intent parser model")
+            val clean = raw.replace("```json", "").replace("```", "").trim()
+            json.decodeFromString<FinancialQuerySpec>(clean)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse intent via Gemini: ${e.message}", e)
+            throw IllegalStateException("Could not parse financial intent for query: $prompt", e)
+        }
+    }
+
+    suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
+        val judgeModelName = remoteConfig.getString(JUDGE_AI_MODEL_KEY).ifBlank { DEFAULT_JUDGE_MODEL }
+        val judgeModel = aiModel.generativeModel(
+            modelName = judgeModelName,
+            systemInstruction = content {
+                text(
+                    "You are a reading-level quality judge for personal finance responses. " +
+                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
+                    "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
+                    "If the input already adheres to plain English, return it unchanged. " +
+                    "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
+                    "Reply with the final text only."
+                )
+            }
+        )
+
+        return try {
+            val prompt = if (verifiedAmount != null) {
+                "Prose to judge: \"$prose\". Must preserve exact number: \$$verifiedAmount."
+            } else {
+                "Prose to judge: \"$prose\"."
+            }
+            val response = judgeModel.generateContent(prompt)
+            val rewritten = response.text?.trim()
+            if (!rewritten.isNullOrBlank()) rewritten else prose
+        } catch (e: Exception) {
+            Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
+            prose
+        }
+    }
+
     companion object {
+        private const val CHAT_AI_MODEL_KEY = "chat_ai_model"
+        private const val JUDGE_AI_MODEL_KEY = "judge_ai_model"
+        private const val DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+        private const val DEFAULT_JUDGE_MODEL = "gemini-3.5-flash-lite"
         //Remote Config Keys
         private const val GENERATE_RECIPE_KEY = "generate_recipe"
         private const val GENERATE_RECIPE_PHOTO_GEMINI_KEY = "generate_recipe_photo_gemini"

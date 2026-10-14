@@ -9,6 +9,8 @@ import com.talktomyfinances.android.domain.InsightsRepository
 import com.talktomyfinances.android.domain.ProfileStore
 import com.talktomyfinances.android.domain.ReadabilityGuard
 import com.talktomyfinances.android.domain.TextRewriter
+import com.talktomyfinances.android.data.repository.CloudRunAuditorRepository
+import com.talktomyfinances.android.domain.AuditorRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -22,6 +24,8 @@ abstract class DomainBindingsModule {
     @Binds abstract fun profileStore(impl: FirestoreProfileStore): ProfileStore
     @Binds abstract fun classifier(impl: FirebaseOnboardingAI): GoalClassifier
     @Binds abstract fun rewriter(impl: FirebaseOnboardingAI): TextRewriter
+    @Binds abstract fun auditor(impl: CloudRunAuditorRepository): AuditorRepository
+    @Binds abstract fun chat(impl: com.talktomyfinances.android.data.repository.FirestoreChatRepository): com.talktomyfinances.android.domain.ChatRepository
 
     companion object {
         @Provides fun goalResolver(classifier: GoalClassifier) = GoalResolver(classifier)

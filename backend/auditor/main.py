@@ -6,10 +6,11 @@ from datetime import date, timedelta
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
 from auditor.models import AuditReceipt, AuditResponse, DateWindow, FinancialQuerySpec, InsightChip
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,7 +71,7 @@ def run_audit(req: AuditRequest) -> AuditResponse:
             f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
         )
         response = client.models.generate_content(
-            model=PARSER_MODEL_NAME,
+            model=CURATION_MODEL_NAME,
             contents=prompt,
         )
         if not response.text:
@@ -432,7 +433,7 @@ def _parse_query_with_llm(query: str, transactions: List[Dict[str, Any]]) -> Opt
         from google.genai import types
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=PARSER_MODEL_NAME,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -453,6 +454,19 @@ def _typed_error(status_code: int, status: str, message: str) -> JSONResponse:
 def _closest_matches(term: str, vocabulary: List[str], n: int = 3) -> List[str]:
     pool = {v.lower(): v for v in vocabulary}
     return [pool[m] for m in get_close_matches(term.lower(), list(pool), n=n, cutoff=0.6)]
+
+
+@app.post("/compute", response_model=AuditReceipt)
+def compute_spec(spec: FinancialQuerySpec) -> Response:
+    """Deterministic compute endpoint (ADR 0003): spec in, Audit Receipt out.
+
+    No LLM in this path. Engine rejections surface as typed 422s, never 500s.
+    """
+    transactions = load_transactions()
+    try:
+        return execute_spec_compute(spec, transactions)
+    except ValueError as e:
+        return _typed_error(422, "uncomputable", str(e))
 
 
 @app.post("/query")
