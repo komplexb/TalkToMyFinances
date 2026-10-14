@@ -19,7 +19,15 @@ backend:
 
 reverse:
 	@echo "Configuring adb reverse port forwarding (8000 -> 8000)..."
-	@"$(ADB)" reverse tcp:8000 tcp:8000 2>/dev/null || echo "Notice: adb reverse skipped (no connected ADB device found)."
+	@DEVICES=$$("$(ADB)" devices | grep -w "device" | awk '{print $$1}'); \
+	if [ -z "$$DEVICES" ]; then \
+		echo "Notice: adb reverse skipped (no connected ADB device found)."; \
+	else \
+		for dev in $$DEVICES; do \
+			echo "Setting adb reverse on $$dev..."; \
+			"$(ADB)" -s "$$dev" reverse tcp:8000 tcp:8000 2>/dev/null || true; \
+		done; \
+	fi
 
 test: test-android test-backend
 

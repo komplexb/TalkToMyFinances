@@ -91,3 +91,13 @@ Set the production backend URL and model configurations in the Firebase Console 
 ### 4. Enforce App Check in Production
 1. Register your production APK/AAB signing certificate fingerprint (SHA-256 obtained via `./gradlew signingReport`) under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
 2. Switch App Check enforcement mode from **Unenforced / Monitoring** to **Enforced** for Firestore, Storage, and AI Logic to block unauthorized API requests.
+
+---
+
+### 5. Gemini Live Client-Side Tool Calling & Visual Offloading (PRD 6.2)
+1. In [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config), ensure `live_model_prompt` contains the voice persona guardrail for Visual Offloading:
+   ```text
+   When a user asks for complex multi-category breakdowns, spending trends, or dense figures, speak a brief audio confirmation ("I've popped that breakdown onto your screen so you can check it out whenever you're ready") and trigger the client-side tool call render_visual_card(card_type, payload).
+   ```
+2. Verify in [Firebase Console > AI Logic](https://console.firebase.google.com/project/_/ailogic) that the Gemini Developer API is enabled and quota is provisioned for `gemini-3.1-flash-live-preview`.
+3. Visual Card offloading is 100% self-contained from the WebSocket tool call payload; cards mount directly into the Jetpack Compose `LazyColumn` message thread and sync state to Cloud Firestore under `users/{userId}/chat_history` without requiring secondary REST calls to Cloud Run.

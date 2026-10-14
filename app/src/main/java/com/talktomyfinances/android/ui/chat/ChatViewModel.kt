@@ -77,6 +77,7 @@ class ChatViewModel @Inject constructor(
     init {
         ensureAuthAndObserveChat()
         observeVoiceTranscripts()
+        observeVisualCardEvents()
     }
 
     private suspend fun getOrEnsureUserId(): String? {
@@ -175,6 +176,30 @@ class ChatViewModel @Inject constructor(
     private fun observeVoiceTranscripts() {
         // Voice dialogue transcribing to chat bubbles is disabled per design.
         // Supporting visual cards / charts will be rendered inline during tool calls in Issue #33.
+    }
+
+    private fun observeVisualCardEvents() {
+        viewModelScope.launch {
+            liveVoiceManager.visualCardEvents.collect { payload ->
+                val uid = getOrEnsureUserId() ?: return@collect
+
+                val title = payload.title.ifBlank { "spending breakdown" }
+                val timeframeSuffix = if (!payload.timeframe.isNullOrBlank()) " for ${payload.timeframe}" else ""
+                val summaryText = "Here is the $title$timeframeSuffix."
+
+                val chatMsg = ChatMessage(
+                    sender = MessageSender.ASSISTANT,
+                    text = summaryText,
+                    visualCard = payload,
+                    auditReceipt = payload.auditReceipt
+                )
+                try {
+                    chatRepository.saveMessage(uid, chatMsg)
+                } catch (e: Exception) {
+                    _error.value = "Failed to sync visual card: ${e.message}"
+                }
+            }
+        }
     }
 
     fun switchToVoice() {
