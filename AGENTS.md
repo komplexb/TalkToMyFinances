@@ -1,5 +1,21 @@
 # Talk to My Finances — Agent Guidelines
 
+## Gemini API Guidelines
+
+- Before writing Gemini API code, consult the `geminiDocs` MCP server (`gemini_search_docs` / `gemini_get_doc`) or `https://ai.google.dev/gemini-api/docs/llms.txt`.
+- Always use the current Gemini API SDK (`google-genai` for Python, `@google/genai` for TypeScript/JavaScript). Never use legacy SDKs (`google-generativeai` or `@google/generative-ai`).
+- Use the Interactions API (`client.interactions.create`) for new applications unless a specific feature requires `generateContent`.
+- Use current recommended models (see https://ai.google.dev/gemini-api/docs/models) and avoid deprecated models.
+
+## AI Model Constraints (Firebase AI Logic)
+Always use current Gemini 3-series models per https://firebase.google.com/docs/ai-logic/models.md.txt:
+- **Primary Chat & Intent Parser**: `gemini-3.8-flash`
+- **Ultra-Fast / Workhorse**: `gemini-3.5-flash-lite`
+- **Gemini Live Voice Streaming**: `gemini-3.1-flash-live-preview`
+- **Pro / Complex Reasoning**: `gemini-3.1-pro-preview`
+- **TTS**: `gemini-3.1-flash-tts-preview`
+- **Prohibited**: Do NOT use deprecated or older 2.x/1.x models (e.g. `gemini-2.0-*`, `gemini-2.5-*`).
+
 ## Agent skills
 
 ### Issue tracker

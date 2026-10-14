@@ -226,6 +226,33 @@ If the app errors or hangs after submitting your pay date on the onboarding scre
 
 ---
 
+### 🎙️ Testing Gemini Live Voice Mode & Device Mirroring
+
+#### 1. Best Practice: Test Voice on a Physical Device
+* **Performance Note:** Gemini Live uses full-duplex 16-bit PCM audio streaming over WebSockets. Real-time audio streaming **works best when connecting a physical Android device via USB or Wi-Fi**, as Android emulator virtual audio drivers can suffer from audio track underruns and buffer latency.
+
+#### 2. How to Connect & Mirror Physical Device in Android Studio
+1. **Enable USB Debugging on Phone:** On your Android phone, go to *Settings > About Phone* and tap *Build Number* 7 times. Then go to *Settings > System > Developer Options* and turn on **USB Debugging**.
+2. **Connect Device:** Plug your phone into your computer via USB (or use Wireless Debugging) and select **Allow USB Debugging** on your phone screen prompt.
+3. **Enable Device Mirroring in Android Studio:**
+   - Open **Settings / Preferences** (`Cmd + ,` on macOS or `Ctrl + Alt + S` on Windows/Linux).
+   - Go to **Tools > Device Mirroring** and check **Enable device mirroring**.
+   - Click **Apply** and **OK**.
+4. **View Screen in Android Studio:** Go to **View > Tool Windows > Running Devices** (or click the *Running Devices* tab on the right sidebar). Your physical phone screen will mirror live inside Android Studio!
+
+#### 3. Gemini Voice Options & Customization
+Gemini Live supports 30 prebuilt studio voices:
+
+* **Current Default Voice:** **`Puck`** (Upbeat persona).
+* **How to Change the Voice:**
+  - **In Local Development:** Edit the `<key>live_model_voice</key>` value in [`app/src/main/res/xml/remote_config_defaults.xml`](app/src/main/res/xml/remote_config_defaults.xml) (e.g. `Aoede`, `Charon`, `Kore`, `Fenrir`, `Zephyr`, `Iapetus`, `Achird`).
+  - **In Production:** Update the `live_model_voice` Remote Config parameter in the [Firebase Console](https://console.firebase.google.com/project/_/config).
+* **Preview Voices & Docs:**
+  - Hear and preview interactive samples for all 30 studio voices in [Google AI Studio > Generate Speech](https://aistudio.google.com/generate-speech).
+  - Read the official voice capabilities guide at [Gemini API Speech Generation Documentation](https://ai.google.dev/gemini-api/docs/speech-generation).
+
+---
+
 ## 🚢 Production Deployment
 
 For complete step-by-step instructions on deploying security rules, Cloud Run Python backend, GCP Secret Manager credentials, production Remote Config, and App Check enforcement, see:
