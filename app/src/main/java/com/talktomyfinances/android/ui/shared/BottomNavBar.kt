@@ -16,7 +16,7 @@ import com.talktomyfinances.android.ui.theme.Teal
 
 sealed class BottomNavItem(val route: Any, val icon: Int, val label: Int) {
     object Insights : BottomNavItem(InsightsRoute, R.drawable.ic_generate, R.string.nav_bar_insights)
-    object Chat : BottomNavItem(ChatRoute(), R.drawable.ic_serving, R.string.nav_bar_chat)
+    object Chat : BottomNavItem(ChatRoute(), R.drawable.ic_voice_chat, R.string.nav_bar_chat)
 }
 
 /** Two-screen flow per ADR 0002: Home/Insights and Chat. */
