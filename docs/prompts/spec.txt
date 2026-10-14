@@ -1,13 +1,17 @@
-/plan use the firebase skills to make a plan to complete this task: https://github.com/komplexb/TalkToMyFinances/issues/[issue-number]
+# Plan
+/plan use the android skills and the firebase skills to make a plan to complete this task: https://github.com/komplexb/TalkToMyFinances/issues/[issue-number]
 to begin branch from the current branch with the pattern `spec/section-number-hyphenated-issue-title`
 when unclear read:
 - the docs in @docs/**/*
 - the prd
 - the specs and open issues: https://github.com/komplexb/TalkToMyFinances/issues
-when ambiguous the spec(s) supercedes the prd as they are derived from the prd then refined
+when ambiguous the spec(s) and issues, supercedes the prd as they are derived from the prd then refined
 
 - Avoid handrolling solutions that can be solved by an established library: before writing custom algorithms, complex regex, parsing logic, or scoring/math heuristics (e.g., text readability, date/time math, image rendering, or schema validation), check Maven Central/PyPI for battle-tested libraries. Prefer an established library whenever custom code would require managing edge cases or fragile rules.
 - make sure to make appropriate tests for the features developed, run existing tests at the end of your dev cycle to make sure you don't introduce a regression
 - add/extend a how to deploy section that outlines the steps needed for the implemented spec to work in prod; whether firebase-tools, firebase console actions, etc
 - avoid stubs and mocks outside of test suites, only exception is if we're mocking/stubbing because a dependency has not yet been built.
     - whenever you feel like reaching for a stub/mock check the backend directory to see if it already exists.
+
+# Implement
+When implementing, be sure to consult android and firebase skills for best practices and verification of your implementation.
