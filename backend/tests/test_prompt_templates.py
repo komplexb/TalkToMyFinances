@@ -27,6 +27,17 @@ def test_render_prompt_missing_variable_raises():
         )
 
 
+def test_render_curation_prompt():
+    rendered = render_prompt(
+        "curation-template-v1-0-0",
+        {"goal": "SAVINGS", "catalog": "[{\"id\": 1}]"},
+    )
+    assert "Given the user's financial goal 'SAVINGS'" in rendered
+    assert rendered.count("'SAVINGS'") == 2  # goal appears in two sentences
+    assert "[{\"id\": 1}]" in rendered
+    assert rendered.endswith("keys 'text', 'recency', 'isSerendipity'.")
+
+
 def test_render_prompt_missing_file_raises():
     with pytest.raises(PromptTemplateError):
         render_prompt("no-such-template", {"query": "x"})

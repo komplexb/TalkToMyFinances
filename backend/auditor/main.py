@@ -17,6 +17,8 @@ from auditor.prompt_templates import render_prompt
 # prompts/intent-parser-template-v1-0-0.prompt — the Intent Parser's system prompt
 # lives in a template file, not in this module.
 INTENT_PARSER_TEMPLATE = "intent-parser-template-v1-0-0"
+# prompts/curation-template-v1-0-0.prompt — same for the Curation Agent.
+CURATION_TEMPLATE = "curation-template-v1-0-0"
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
@@ -69,11 +71,12 @@ def run_audit(req: AuditRequest) -> AuditResponse:
         )
 
     try:
-        prompt = (
-            f"Given the user's financial goal '{req.goal}', select 3 most relevant insight chips from this catalog:\n"
-            f"{json.dumps(FACT_CATALOG)}\n\n"
-            f"Select exactly 2 chips matching or helping their goal '{req.goal}' and 1 serendipity chip (is_serendipity=true).\n"
-            f"Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'."
+        prompt = render_prompt(
+            CURATION_TEMPLATE,
+            {
+                "goal": req.goal,
+                "catalog": json.dumps(FACT_CATALOG),
+            },
         )
         response = client.models.generate_content(
             model=CURATION_MODEL_NAME,
