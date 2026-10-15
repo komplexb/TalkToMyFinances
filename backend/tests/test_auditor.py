@@ -422,10 +422,10 @@ def test_prd_prompt15_synthesis_is_out_of_spec():
 # /compute endpoint (deterministic spec-in, receipt-out)
 # ---------------------------------------------------------------------------
 
-def test_compute_endpoint_total_sum():
+def make_compute_payload(**overrides):
     payload = {
         "target_metric": "TOTAL_SUM",
-        "included_merchants": ["Uber Eats"],
+        "included_merchants": [],
         "excluded_merchants": [],
         "included_categories": [],
         "excluded_categories": [],
@@ -434,6 +434,11 @@ def test_compute_endpoint_total_sum():
         "exclude_pending": True,
         "exclude_internal_transfers": True
     }
+    payload.update(overrides)
+    return payload
+
+def test_compute_endpoint_total_sum():
+    payload = make_compute_payload(included_merchants=["Uber Eats"])
     response = client.post("/compute", json=payload)
     assert response.status_code == 200
     data = response.json()

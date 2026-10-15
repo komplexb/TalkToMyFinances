@@ -61,6 +61,20 @@ import com.talktomyfinances.android.R
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.ui.chat.components.VisualCardView
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.talktomyfinances.android.domain.VoiceSessionStatus
+import com.talktomyfinances.android.domain.VoiceState
+import com.talktomyfinances.android.ui.chat.components.VoiceWaveformBar
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -74,6 +88,15 @@ fun ChatScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.switchToVoice()
+        }
+    }
 
     LaunchedEffect(prompt) {
         viewModel.handlePrimedPrompt(prompt)
@@ -104,8 +127,19 @@ fun ChatScreen(
             ChatBottomInputBar(
                 inputText = uiState.inputText,
                 isLoading = uiState.isLoading,
+                inputMode = uiState.inputMode,
+                voiceState = uiState.voiceState,
                 onTextChanged = viewModel::onInputTextChanged,
-                onSendMessage = { viewModel.sendMessage(uiState.inputText) }
+                onSendMessage = { viewModel.sendMessage(uiState.inputText) },
+                onSwitchToVoice = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.switchToVoice()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                onSwitchToText = viewModel::switchToText,
+                onToggleMute = viewModel::toggleMute
             )
         }
     ) { innerPadding ->
@@ -125,6 +159,19 @@ fun ChatScreen(
             ) {
                 items(uiState.messages, key = { it.id }) { message ->
                     ChatMessageItem(message = message)
+                }
+
+                if (uiState.inputMode == ChatInputMode.VOICE && uiState.voiceState.activeTranscript.isNotBlank()) {
+                    item(key = "active_voice_transcript") {
+                        val isUserSpeaking = uiState.voiceState.status == VoiceSessionStatus.LISTENING
+                        ChatMessageItem(
+                            message = ChatMessage(
+                                id = "in_flight_transcript",
+                                sender = if (isUserSpeaking) MessageSender.USER else MessageSender.ASSISTANT,
+                                text = uiState.voiceState.activeTranscript
+                            )
+                        )
+                    }
                 }
 
                 if (uiState.isLoading) {
@@ -169,7 +216,15 @@ fun ChatMessageItem(message: ChatMessage) {
             )
         }
 
-        message.auditReceipt?.let { receipt ->
+        message.visualCard?.let { visualCard ->
+            val cardWithReceipt = if (visualCard.auditReceipt == null && message.auditReceipt != null) {
+                visualCard.copy(auditReceipt = message.auditReceipt)
+            } else {
+                visualCard
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            VisualCardView(visualCard = cardWithReceipt)
+        } ?: message.auditReceipt?.let { receipt ->
             Spacer(modifier = Modifier.height(6.dp))
             AuditReceiptCard(receipt = receipt)
         }
@@ -327,63 +382,190 @@ fun ThinkingIndicator() {
 fun ChatBottomInputBar(
     inputText: String,
     isLoading: Boolean,
+    inputMode: ChatInputMode,
+    voiceState: VoiceState,
     onTextChanged: (String) -> Unit,
-    onSendMessage: () -> Unit
+    onSendMessage: () -> Unit,
+    onSwitchToVoice: () -> Unit,
+    onSwitchToText: () -> Unit,
+    onToggleMute: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding(),
-        tonalElevation = 3.dp
+        tonalElevation = 4.dp
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = onTextChanged,
-                modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        text = "Ask about your spending...",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                ),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = KeyboardActions(
-                    onSend = { if (inputText.isNotBlank() && !isLoading) onSendMessage() }
-                )
-            )
+        AnimatedContent(
+            targetState = inputMode,
+            transitionSpec = {
+                fadeIn() togetherWith fadeOut()
+            },
+            label = "bottom_bar_morph"
+        ) { mode ->
+            when (mode) {
+                ChatInputMode.TEXT -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = onTextChanged,
+                            modifier = Modifier.weight(1f),
+                            placeholder = {
+                                Text(
+                                    text = "Ask about your spending...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            shape = RoundedCornerShape(24.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions.Default.copy(
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = { if (inputText.isNotBlank() && !isLoading) onSendMessage() }
+                            )
+                        )
 
-            // Send Button
-            IconButton(
-                onClick = onSendMessage,
-                enabled = inputText.isNotBlank() && !isLoading,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                ),
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_check),
-                    contentDescription = "Send",
-                    modifier = Modifier.size(20.dp)
-                )
+                        // Voice Mode Toggle Button
+                        IconButton(
+                            onClick = onSwitchToVoice,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_mic),
+                                contentDescription = "Voice Mode",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        // Send Button (only when text is entered)
+                        if (inputText.isNotBlank()) {
+                            IconButton(
+                                onClick = onSendMessage,
+                                enabled = !isLoading,
+                                colors = IconButtonDefaults.iconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_check),
+                                    contentDescription = "Send",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                ChatInputMode.VOICE -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Switch back to text button
+                        IconButton(
+                            onClick = onSwitchToText,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_keyboard),
+                                contentDescription = "Switch to Text",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        // Waveform and status indicator
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val statusText = when (voiceState.status) {
+                                        VoiceSessionStatus.CONNECTING -> "Connecting to Gemini Live..."
+                                        VoiceSessionStatus.CONNECTED -> "Ready"
+                                        VoiceSessionStatus.LISTENING -> if (voiceState.isMuted) "Microphone Muted" else "Listening..."
+                                        VoiceSessionStatus.SPEAKING -> "Gemini is speaking..."
+                                        VoiceSessionStatus.MUTED -> "Muted"
+                                        VoiceSessionStatus.ERROR -> voiceState.errorMessage ?: "Voice Error"
+                                        VoiceSessionStatus.DISCONNECTED -> "Disconnected"
+                                    }
+                                    Text(
+                                        text = statusText,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (voiceState.status == VoiceSessionStatus.ERROR) MaterialTheme.colorScheme.error
+                                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    if (voiceState.activeTranscript.isNotBlank()) {
+                                        Text(
+                                            text = voiceState.activeTranscript,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                VoiceWaveformBar(
+                                    status = voiceState.status,
+                                    isMuted = voiceState.isMuted
+                                )
+                            }
+                        }
+
+                        // Mute / Unmute Button
+                        IconButton(
+                            onClick = onToggleMute,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = if (voiceState.isMuted) MaterialTheme.colorScheme.errorContainer
+                                                else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (voiceState.isMuted) MaterialTheme.colorScheme.onErrorContainer
+                                               else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(
+                                    id = if (voiceState.isMuted) R.drawable.ic_mic_off else R.drawable.ic_mic
+                                ),
+                                contentDescription = if (voiceState.isMuted) "Unmute" else "Mute",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

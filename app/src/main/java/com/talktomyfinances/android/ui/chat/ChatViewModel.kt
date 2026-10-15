@@ -8,6 +8,8 @@ import com.talktomyfinances.android.domain.AuditorRepository
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.ChatRepository
 import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.domain.LiveVoiceManager
+import com.talktomyfinances.android.domain.VoiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,11 +21,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class ChatInputMode {
+    TEXT,
+    VOICE
+}
+
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val inputText: String = "",
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val inputMode: ChatInputMode = ChatInputMode.TEXT,
+    val voiceState: VoiceState = VoiceState()
 )
 
 @HiltViewModel
@@ -31,25 +40,31 @@ class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val aiRemoteDataSource: AIRemoteDataSource,
     private val auditorRepository: AuditorRepository,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val liveVoiceManager: LiveVoiceManager
 ) : ViewModel() {
 
     private val _inputText = MutableStateFlow("")
     private val _isLoading = MutableStateFlow(false)
     private val _error = MutableStateFlow<String?>(null)
     private val _messagesFlow = MutableStateFlow<List<ChatMessage>>(emptyList())
+    private val _inputMode = MutableStateFlow(ChatInputMode.TEXT)
 
     val uiState: StateFlow<ChatUiState> = combine(
         _messagesFlow,
         _inputText,
         _isLoading,
-        _error
-    ) { messages, input, loading, err ->
+        combine(_error, _inputMode, liveVoiceManager.voiceState) { err, mode, vState ->
+            Triple(err, mode, vState)
+        }
+    ) { messages, input, loading, (err, mode, vState) ->
         ChatUiState(
             messages = messages,
             inputText = input,
             isLoading = loading,
-            error = err
+            error = err,
+            inputMode = mode,
+            voiceState = vState
         )
     }.stateIn(
         scope = viewModelScope,
@@ -61,6 +76,8 @@ class ChatViewModel @Inject constructor(
 
     init {
         ensureAuthAndObserveChat()
+        observeVoiceTranscripts()
+        observeVisualCardEvents()
     }
 
     private suspend fun getOrEnsureUserId(): String? {
@@ -165,6 +182,65 @@ class ChatViewModel @Inject constructor(
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    private fun observeVoiceTranscripts() {
+        // Voice dialogue transcribing to chat bubbles is disabled per design.
+        // Supporting visual cards / charts will be rendered inline during tool calls in Issue #33.
+    }
+
+    private fun observeVisualCardEvents() {
+        viewModelScope.launch {
+            liveVoiceManager.visualCardEvents.collect { payload ->
+                val uid = getOrEnsureUserId() ?: return@collect
+
+                val title = payload.title.ifBlank { "spending breakdown" }
+                val timeframeSuffix = if (!payload.timeframe.isNullOrBlank()) " for ${payload.timeframe}" else ""
+                val summaryText = "Here is the $title$timeframeSuffix."
+
+                val chatMsg = ChatMessage(
+                    sender = MessageSender.ASSISTANT,
+                    text = summaryText,
+                    visualCard = payload,
+                    auditReceipt = payload.auditReceipt
+                )
+                try {
+                    chatRepository.saveMessage(uid, chatMsg)
+                } catch (e: Exception) {
+                    _error.value = "Failed to sync visual card: ${e.message}"
+                }
+            }
+        }
+    }
+
+    fun switchToVoice() {
+        _inputMode.value = ChatInputMode.VOICE
+        _error.value = null
+        viewModelScope.launch {
+            val result = liveVoiceManager.startSession()
+            if (result.isFailure) {
+                _error.value = result.exceptionOrNull()?.message ?: "Failed to start voice session"
+            }
+        }
+    }
+
+    fun switchToText() {
+        _inputMode.value = ChatInputMode.TEXT
+        viewModelScope.launch {
+            liveVoiceManager.stopSession()
+        }
+    }
+
+    fun toggleMute() {
+        val currentMute = uiState.value.voiceState.isMuted
+        liveVoiceManager.setMuted(!currentMute)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            liveVoiceManager.stopSession()
         }
     }
 }

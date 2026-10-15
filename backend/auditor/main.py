@@ -21,6 +21,7 @@ INTENT_PARSER_TEMPLATE = "intent-parser-template-v1-0-0"
 CURATION_TEMPLATE = "curation-template-v1-0-0"
 
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
 
 app = FastAPI(title="TalkToMyFinances Auditor & Curation API", version="0.1.0")

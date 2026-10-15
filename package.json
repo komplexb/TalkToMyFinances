@@ -1,0 +1,15 @@
+{
+  "name": "talk-to-my-finances-monorepo",
+  "version": "1.0.0",
+  "description": "Talk to My Finances monorepo scripts runner",
+  "scripts": {
+    "dev": "make dev",
+    "backend": "make backend",
+    "reverse": "make reverse",
+    "test": "make test",
+    "test:android": "make test-android",
+    "test:backend": "make test-backend",
+    "build": "make build"
+  },
+  "private": true
+}

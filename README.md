@@ -76,12 +76,14 @@ If your project lead or admin has already created and configured the Firebase ba
      npx -y firebase-tools@latest apps:sdkconfig ANDROID <APP_ID> --project <PROJECT_ID> > app/google-services.json
      ```
 3. **Register App Check Debug Token** *(For Emulators/Local Dev)*:
-   - Run the app on an emulator and locate the secret printed in Logcat:
+   - Each emulator generates a unique debug token on its first run.
+   - Launch the app on your emulator and check Android Studio **Logcat** (filter for `DebugAppCheckProvider`):
      ```text
      DebugAppCheckProvider: Enter this debug secret into the allow list
-     in the Firebase Console for your project: (secret).
+     in the Firebase Console for your project: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
      ```
-   - In [Firebase Console > App Check > Apps](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click the three dots for `com.talktomyfinances.android` > **Manage debug tokens** > add secret and save.
+   - In [Firebase Console > App Check > Apps](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click the three dots (`⋮`) for `com.talktomyfinances.android` > **Manage debug tokens** > click **Add debug token**, paste your secret UUID, and save.
+   - *Note*: If this token is not registered, Firebase App Check will block backend requests (e.g. after entering your pay date during onboarding), causing network calls to fail or freeze.
 
 ---
 
@@ -123,8 +125,14 @@ If you are setting up a brand-new Firebase project from scratch for **Talk to My
      npx -y firebase-tools@latest deploy --only storage --project <YOUR_PROJECT_ID>
      ```
 
-5. **Configure App Check & Debug Tokens**:
-   - Register Play Integrity with your SHA-256 fingerprint (`./gradlew signingReport`) under [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true). Add your emulator debug token under **Manage debug tokens**.
+5. **Configure App Check & Debug Tokens** *(For Production & Local Dev)*:
+   - For Production: Register Play Integrity with your SHA-256 fingerprint (`./gradlew signingReport`) under [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true).
+   - For Local Emulator Dev: Launch the app on your emulator, search Android Studio **Logcat** for `DebugAppCheckProvider` to find your generated debug secret UUID:
+     ```text
+     DebugAppCheckProvider: Enter this debug secret into the allow list
+     in the Firebase Console for your project: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+     ```
+   - In [App Check Console](https://console.firebase.google.com/project/_/appcheck/?useAutoProject=true), click `com.talktomyfinances.android` $\rightarrow$ **Manage debug tokens** $\rightarrow$ **Add debug token**, paste the UUID secret, and save. *(Note: Every device/emulator generates its own debug token; all developers running the app locally must register their respective token).*
 
 6. **Create Firebase AI Logic Prompt Templates**:
    - Enable the **Gemini Developer API** under [Firebase AI Logic Console](https://console.firebase.google.com/project/_/ailogic/?useAutoProject=true).
@@ -164,19 +172,27 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
      ```env
      GEMINI_API_KEY=AIzaSy...
      ```
-2. **Start the Local Backend:**
+2. **Start Development Environment (One Command):**
    ```sh
-   cd backend
-   export $(cat .env | grep -v '^#' | xargs)
-   uv run uvicorn auditor.main:app --host 0.0.0.0 --port 8000 --reload
+   make dev     # or `npm run dev`
    ```
+   *This automatically sets up `adb reverse` port forwarding and starts the local Python uvicorn backend on port 8000.*
 
-### 2. Reverse Port Forwarding to Android Device/Emulator
-To allow the Android app running on an emulator or USB-connected physical phone to reach `http://127.0.0.1:8000` on your host Mac:
-```sh
-adb reverse tcp:8000 tcp:8000
-```
-*(Run this once whenever an emulator starts or after plugging in a physical device).*
+---
+
+### 2. Available Monorepo Commands (`Makefile` / `package.json`)
+
+Instead of remembering paths or individual server flags, use the root shortcuts:
+
+| Task               | Command                                 | Description                                                             |
+|:-------------------|:----------------------------------------|:------------------------------------------------------------------------|
+| **Start Dev Mode** | `make dev` *(or `npm run dev`)*         | Configures `adb reverse` port forwarding and starts the backend server. |
+| **Backend Server** | `make backend` *(or `npm run backend`)* | Runs the Python uvicorn backend server on port 8000.                    |
+| **ADB Reverse**    | `make reverse` *(or `npm run reverse`)* | Runs `adb reverse tcp:8000 tcp:8000` for physical devices/emulators.    |
+| **Run All Tests**  | `make test` *(or `npm run test`)*       | Executes Android unit tests and Python backend tests.                   |
+| **Build Android**  | `make build` *(or `npm run build`)*     | Assembles the Android debug APK.                                        |
+
+---
 
 ### 3. Launch App & Monitor Logs
 1. Open the project in Android Studio and run `app` on your Android Emulator or connected physical device.
@@ -185,64 +201,71 @@ adb reverse tcp:8000 tcp:8000
 
 ---
 
-## 🚢 How to Deploy to Production
+## 🔍 Troubleshooting
 
-When launching **Talk to My Finances** to production, follow these steps to deploy the backend resources, security rules, and production configurations:
+### Emulator Connection Failure ("Emulator failed to connect within 5 minutes" / Freeze)
+If the Android emulator fails to boot, freezes on launch, or gives a `failed to connect within 5 minutes` error:
 
-### 1. Deploy Firebase Security Rules & Storage Config
-Deploy the Firestore security rules (`firestore.rules`) and Cloud Storage rules (`storage.rules`) to your production project:
-```sh
-npx -y firebase-tools@latest deploy --only firestore:rules,storage --project <PROD_PROJECT_ID>
-```
+1. **Clear Stuck Background Emulator Processes**:
+   Open Terminal on your Mac and run:
+   ```sh
+   pkill -9 qemu-system
+   pkill -9 emulator
+   adb kill-server && adb start-server
+   ```
+2. **Wipe Data and Cold Boot the Virtual Device**:
+   When an app crashes or freezes, Android Studio saves a corrupted Quick Boot snapshot that prevents future launches.
+   - In Android Studio, open **Device Manager** (right sidebar).
+   - Click the **three dots (`⋮`)** next to your emulator (e.g. `Medium Phone API 37.0`) $\rightarrow$ select **Wipe Data**.
+   - Click the **three dots (`⋮`)** again $\rightarrow$ select **Cold Boot Now**.
 
-### 2. Deploy Cloud Run Python Backend & Configure Secrets
-Build and deploy the Python Auditor & Curation backend (`backend/`) using Google Cloud Build:
-```sh
-gcloud builds submit backend \
-  --config backend/cloudbuild.yaml \
-  --substitutions _MOCK_KEY=$(openssl rand -hex 16)
-```
+### App Freezes / Network Errors After Pay Date Onboarding Step
+If the app errors or hangs after submitting your pay date on the onboarding screen:
+- This is caused by Firebase App Check blocking requests because your local emulator's unique debug token has not been registered in the Firebase Console yet.
+- Follow Step 3 in **Option A (Team Member Setup)** above to locate `DebugAppCheckProvider` in **Logcat** and register your debug token under **App Check > Manage debug tokens**.
 
-Ensure the Cloud Run service has access to your Gemini API Key (`GEMINI_API_KEY`) so the server-side Curation Agent and Intent Parser can execute LLM calls:
-```sh
-# Option A: Store as a secret in Google Cloud Secret Manager (Recommended)
-# 1. Create the secret in your GCP project:
-gcloud secrets create GEMINI_API_KEY \
-  --replication-policy="automatic" \
-  --project=<PROD_PROJECT_ID>
+---
 
-# 2. Add the API key version (obtained from GCP Credentials / AI Studio):
-echo -n "<YOUR_GEMINI_API_KEY>" | gcloud secrets versions add GEMINI_API_KEY \
-  --data-file=- \
-  --project=<PROD_PROJECT_ID>
+### 🎙️ Testing Gemini Live Voice Mode & Device Mirroring
 
-# 3. Mount the secret to the Cloud Run service:
-gcloud run services update ttmf-banksync-mock \
-  --region australia-southeast1 \
-  --project=<PROD_PROJECT_ID> \
-  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
+#### 1. Best Practice: Test Voice on a Physical Device
+* **Performance Note:** Gemini Live uses full-duplex 16-bit PCM audio streaming over WebSockets. Real-time audio streaming **works best when connecting a physical Android device via USB or Wi-Fi**, as Android emulator virtual audio drivers can suffer from audio track underruns and buffer latency.
 
-# Option B: Set directly as an environment variable (Fast testing / Non-production)
-gcloud run services update ttmf-banksync-mock \
-  --region australia-southeast1 \
-  --project=<PROD_PROJECT_ID> \
-  --set-env-vars GEMINI_API_KEY="<YOUR_GEMINI_API_KEY>"
-```
-After deployment, take note of the generated Cloud Run HTTPS URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
+#### 2. How to Connect & Mirror Physical Device in Android Studio
+1. **Enable USB Debugging on Phone:** On your Android phone, go to *Settings > About Phone* and tap *Build Number* 7 times. Then go to *Settings > System > Developer Options* and turn on **USB Debugging**.
+2. **Connect Device:** Plug your phone into your computer via USB (or use Wireless Debugging) and select **Allow USB Debugging** on your phone screen prompt.
+3. **Enable Device Mirroring in Android Studio:**
+   - Open **Settings / Preferences** (`Cmd + ,` on macOS or `Ctrl + Alt + S` on Windows/Linux).
+   - Go to **Tools > Device Mirroring** and check **Enable device mirroring**.
+   - Click **Apply** and **OK**.
+4. **View Screen in Android Studio:** Go to **View > Tool Windows > Running Devices** (or click the *Running Devices* tab on the right sidebar). Your physical phone screen will mirror live inside Android Studio!
 
-### 3. Update Firebase Remote Config for Production
-Set the production backend URL and model configurations in the Firebase Console or via Remote Config template:
-- Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
-- Set parameters:
-  - `insights_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
-  - `auditor_base_url`: Your live Cloud Run URL (e.g. `https://ttmf-auditor-backend-abc123.a.run.app`).
-  - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).
-  - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
-- Publish the changes. (Mobile clients will dynamically fetch these parameters on startup).
+#### 3. Gemini Voice Options & Customization
+Gemini Live supports 30 prebuilt studio voices:
 
-### 4. Enforce App Check in Production
-1. Ensure your production APK/AAB signing certificate fingerprint (SHA-256) is registered under Play Integrity in [App Check Console](https://console.firebase.google.com/project/_/appcheck/).
-2. Switch App Check enforcement mode from **Unenforced / Monitoring** to **Enforced** for Firestore, Storage, and AI Logic to block unauthorized API requests.
+* **Current Default Voice:** **`Puck`** (Upbeat persona).
+* **How to Change the Voice:**
+  - **In Local Development:** Edit the `<key>live_model_voice</key>` value in [`app/src/main/res/xml/remote_config_defaults.xml`](app/src/main/res/xml/remote_config_defaults.xml) (e.g. `Aoede`, `Charon`, `Kore`, `Fenrir`, `Zephyr`, `Iapetus`, `Achird`).
+  - **In Production:** Update the `live_model_voice` Remote Config parameter in the [Firebase Console](https://console.firebase.google.com/project/_/config).
+* **Preview Voices & Docs:**
+  - Hear and preview interactive samples for all 30 studio voices in [Google AI Studio > Generate Speech](https://aistudio.google.com/generate-speech).
+  - Read the official voice capabilities guide at [Gemini API Speech Generation Documentation](https://ai.google.dev/gemini-api/docs/speech-generation).
+
+---
+
+## 🚢 Production Deployment
+
+For complete step-by-step instructions on deploying security rules, Cloud Run Python backend, GCP Secret Manager credentials, production Remote Config, and App Check enforcement, see:
+
+👉 **[DEPLOY.md](DEPLOY.md)**
+
+### 5. Deploy Gemini Live Client-Side Tool Calling & Voice Persona (PRD 6.2)
+1. In [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config), verify the production template contains:
+   - `live_model_name`: `gemini-3.1-flash-live-preview`
+   - `live_model_prompt`: Contains the 5 voice persona rules including Rule 5 (Visual Offloading via `render_visual_card(card_type, payload)`).
+2. Publish Remote Config changes.
+3. In [Firebase Console > AI Logic](https://console.firebase.google.com/project/_/ailogic), ensure Gemini Developer API is enabled and quota is provisioned for Gemini Live bidirectional streaming.
+4. Client cards mount directly from the self-contained WebSocket payload into `LazyColumn` and persist to Cloud Firestore (`users/{userId}/chat_history`) without secondary backend roundtrips.
 
 ---
 

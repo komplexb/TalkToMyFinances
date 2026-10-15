@@ -226,6 +226,9 @@ class AIRemoteDataSource @Inject constructor(
         val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
         val model = aiModel.generativeModel(
             modelName = modelName,
+            generationConfig = generationConfig {
+                responseMimeType = "application/json"
+            },
             systemInstruction = content {
                 text(
                     "You are an Intent Parser for financial queries in personal finance. " +

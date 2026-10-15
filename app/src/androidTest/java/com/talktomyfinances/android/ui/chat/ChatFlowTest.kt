@@ -14,6 +14,8 @@ import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.talktomyfinances.android.domain.MessageSender
 import com.talktomyfinances.android.domain.TargetMetric
 import com.talktomyfinances.android.domain.TemporalGrain
+import com.talktomyfinances.android.domain.VisualCardItemData
+import com.talktomyfinances.android.domain.VisualCardPayload
 import org.junit.Rule
 import org.junit.Test
 
@@ -74,5 +76,49 @@ class ChatFlowTest {
 
         rule.onNodeWithText("What was my spend on Uber?").assertIsDisplayed()
         rule.onNodeWithText("You spent $253.50 on Uber this month.").assertIsDisplayed()
+    }
+
+    @Test
+    fun chatMessageWithVisualCardRendersInlineCardAndAuditReceipt() {
+        val visualCard = VisualCardPayload(
+            cardType = "category_breakdown",
+            title = "Takeaway Spend Breakdown",
+            totalAmount = 185.50,
+            items = listOf(
+                VisualCardItemData(category = "Uber Eats", amount = 125.00, percentage = 67.38),
+                VisualCardItemData(category = "Menulog", amount = 60.50, percentage = 32.62)
+            ),
+            auditReceipt = AuditReceipt(
+                summary = "Takeaway spend computed deterministically.",
+                value = 185.50
+            ),
+            timeframe = "This Month"
+        )
+        val assistantMessage = ChatMessage(
+            sender = MessageSender.ASSISTANT,
+            text = "I've popped that breakdown onto your screen so you can check it out whenever you're ready.",
+            visualCard = visualCard,
+            auditReceipt = visualCard.auditReceipt
+        )
+
+        rule.setContent {
+            ChatMessageItem(message = assistantMessage)
+        }
+
+        // Verify spoken confirmation bubble text
+        rule.onNodeWithText("I've popped that breakdown onto your screen so you can check it out whenever you're ready.").assertIsDisplayed()
+
+        // Verify visual card header
+        rule.onNodeWithText("Takeaway Spend Breakdown").assertIsDisplayed()
+        rule.onNodeWithText("$185.50").assertIsDisplayed()
+        rule.onNodeWithText("This Month").assertIsDisplayed()
+
+        // Verify breakdown items rendered inline
+        rule.onNodeWithText("Uber Eats").assertIsDisplayed()
+        rule.onNodeWithText("Menulog").assertIsDisplayed()
+
+        // Verify inline plain-English audit receipt
+        rule.onNodeWithText("Deterministic Math Audit Receipt").assertIsDisplayed()
+        rule.onNodeWithText("Takeaway spend computed deterministically.").assertIsDisplayed()
     }
 }

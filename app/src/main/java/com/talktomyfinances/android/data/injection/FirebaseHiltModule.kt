@@ -47,7 +47,7 @@ object FirebaseHiltModule {
         val remoteConfig = Firebase.remoteConfig
 
         val configSettings = remoteConfigSettings {
-            minimumFetchIntervalInSeconds = 1800
+            minimumFetchIntervalInSeconds = if (com.talktomyfinances.android.BuildConfig.DEBUG) 0 else 1800
         }
 
         remoteConfig.setConfigSettingsAsync(configSettings)
