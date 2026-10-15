@@ -1,11 +1,12 @@
 package com.talktomyfinances.android.ui.chat
 
-import com.talktomyfinances.android.data.datasource.AIRemoteDataSource
+import com.talktomyfinances.android.data.datasource.AIChatDataSource
 import com.talktomyfinances.android.data.repository.AuthRepository
 import com.talktomyfinances.android.data.repository.StubAuditorRepository
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.ChatRepository
+import com.talktomyfinances.android.domain.CurrencySanitizer
 import com.talktomyfinances.android.domain.DateWindow
 import com.talktomyfinances.android.domain.DateWindowType
 import com.talktomyfinances.android.domain.FinancialGoal
@@ -115,11 +116,11 @@ class TwoTrackChatPipelineTest {
         ),
         var judgeProseToReturn: String = "You spent $253.50 on dining.",
         var guidanceTextToReturn: String = "Try cooking in batches this week to trim your takeout spending without feeling restricted."
-    ) : com.talktomyfinances.android.data.datasource.AIChatDataSource {
+    ) : AIChatDataSource {
         var lastPassedPrompt: String? = null
         var lastPassedReceipt: AuditReceipt? = null
         var lastPassedMessages: List<ChatMessage> = emptyList()
-        var lastPassedGoal: String? = null
+        var lastPassedGoal: FinancialGoal? = null
 
         override suspend fun parseFinancialIntent(
             prompt: String,
@@ -140,7 +141,7 @@ class TwoTrackChatPipelineTest {
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: String?
+            userGoal: FinancialGoal?
         ): String {
             lastPassedPrompt = prompt
             lastPassedReceipt = previousReceipt
@@ -204,7 +205,7 @@ class TwoTrackChatPipelineTest {
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
-            aiRemoteDataSource = fakeAI,
+            aiChatDataSource = fakeAI,
             auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
@@ -225,6 +226,8 @@ class TwoTrackChatPipelineTest {
         assertEquals("You spent $253.50 on dining.", assistantMsg.text)
         assertNotNull("Track A must include verified AuditReceipt", assistantMsg.auditReceipt)
         assertEquals(253.50, assistantMsg.auditReceipt?.value ?: 0.0, 0.001)
+        assertNotNull("Track A must include inline visual fact data (VisualCard)", assistantMsg.visualCard)
+        assertEquals(253.50, assistantMsg.visualCard?.totalAmount ?: 0.0, 0.001)
     }
 
     @Test
@@ -244,7 +247,7 @@ class TwoTrackChatPipelineTest {
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
-            aiRemoteDataSource = fakeAI,
+            aiChatDataSource = fakeAI,
             auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
@@ -263,7 +266,7 @@ class TwoTrackChatPipelineTest {
         // Verify that raw classifier strings are never leaked
         assertFalse(assistantMsg.text.contains("out_of_spec"))
         assertFalse(assistantMsg.text.contains("open-ended habit description"))
-        assertEquals("MINDFUL_SPENDING", fakeAI.lastPassedGoal)
+        assertEquals(FinancialGoal.MINDFUL_SPENDING, fakeAI.lastPassedGoal)
     }
 
     @Test
@@ -277,7 +280,7 @@ class TwoTrackChatPipelineTest {
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
-            aiRemoteDataSource = fakeAI,
+            aiChatDataSource = fakeAI,
             auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
@@ -309,16 +312,25 @@ class TwoTrackChatPipelineTest {
 
     @Test
     fun currencySanitization_preventsMultipleDecimalArtifacts() {
-        val corrupted = "Your dining total was $0.0.00 this week."
-        val sanitized = corrupted
-            .replace(Regex("""\$\s*0\.0\.00""")) { "$0.00" }
-            .replace(Regex("""\$(\d+)\.(?:\d+\.)+(\d{2})\b""")) { m -> "\$" + m.groupValues[1] + "." + m.groupValues[2] }
-        assertEquals("Your dining total was $0.00 this week.", sanitized)
-
-        val corruptedNonZero = "Your spending was $15.5.50 on cafes."
-        val sanitizedNonZero = corruptedNonZero
-            .replace(Regex("""\$\s*0\.0\.00""")) { "$0.00" }
-            .replace(Regex("""\$(\d+)\.(?:\d+\.)+(\d{2})\b""")) { m -> "\$" + m.groupValues[1] + "." + m.groupValues[2] }
-        assertEquals("Your spending was $15.50 on cafes.", sanitizedNonZero)
+        assertEquals(
+            "Your dining total was $0.00 this week.",
+            CurrencySanitizer.sanitize("Your dining total was $0.0.00 this week.")
+        )
+        assertEquals(
+            "Your dining total was $0.00 this week.",
+            CurrencySanitizer.sanitize("Your dining total was $0.0.0 this week.")
+        )
+        assertEquals(
+            "Your spending was $15.50 on cafes.",
+            CurrencySanitizer.sanitize("Your spending was $15.5.50 on cafes.")
+        )
+        assertEquals(
+            "Your spending was $15.50 on cafes.",
+            CurrencySanitizer.sanitize("Your spending was $15.5.5 on cafes.")
+        )
+        assertEquals(
+            "Your spending was $253.50 on dining.",
+            CurrencySanitizer.sanitize("Your spending was $253.50 on dining.")
+        )
     }
 }

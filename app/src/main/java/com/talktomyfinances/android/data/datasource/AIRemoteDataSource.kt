@@ -27,6 +27,8 @@ import com.talktomyfinances.android.data.schema.MealSchema
 import com.talktomyfinances.android.data.schema.RecipeSchema
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
+import com.talktomyfinances.android.domain.CurrencySanitizer
+import com.talktomyfinances.android.domain.FinancialGoal
 import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.google.firebase.perf.performance
 import com.google.firebase.perf.trace
@@ -53,7 +55,7 @@ interface AIChatDataSource {
         prompt: String,
         recentMessages: List<ChatMessage> = emptyList(),
         previousReceipt: AuditReceipt? = null,
-        userGoal: String? = null
+        userGoal: FinancialGoal? = null
     ): String
 }
 
@@ -297,12 +299,7 @@ open class AIRemoteDataSource @Inject constructor(
                     append("- Value: ${previousReceipt.value}\n")
                 }
             }
-            if (recentMessages.isNotEmpty()) {
-                append("Recent conversation turns:\n")
-                recentMessages.takeLast(4).forEach {
-                    append("${it.sender.name}: ${it.text}\n")
-                }
-            }
+            appendRecentDialogueTurns(recentMessages)
             append("User Query: $prompt")
         }
 
@@ -348,13 +345,10 @@ open class AIRemoteDataSource @Inject constructor(
             val response = judgeModel.generateContent(prompt)
             val rewritten = response.text?.trim()
             val textToClean = if (!rewritten.isNullOrBlank()) rewritten else prose
-            textToClean
-                .replace(Regex("""\$\s*0\.0\.00""")) { "$0.00" }
-                .replace(Regex("""\$(\d+)\.(?:\d+\.)+(\d{2})\b""")) { m -> "\$" + m.groupValues[1] + "." + m.groupValues[2] }
+            CurrencySanitizer.sanitize(textToClean)
         } catch (e: Exception) {
             Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
-            prose.replace(Regex("""\$\s*0\.0\.00""")) { "$0.00" }
-                .replace(Regex("""\$(\d+)\.(?:\d+\.)+(\d{2})\b""")) { m -> "\$" + m.groupValues[1] + "." + m.groupValues[2] }
+            CurrencySanitizer.sanitize(prose)
         }
     }
 
@@ -362,15 +356,16 @@ open class AIRemoteDataSource @Inject constructor(
         prompt: String,
         recentMessages: List<ChatMessage>,
         previousReceipt: AuditReceipt?,
-        userGoal: String?
+        userGoal: FinancialGoal?
     ): String {
         val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
+        val goalName = userGoal?.name ?: "MINDFUL_SPENDING"
         val model = aiModel.generativeModel(
             modelName = modelName,
             systemInstruction = content {
                 text(
                     "You are an empathetic, practical financial coach in an Australian personal finance app. " +
-                    "The user's primary goal is: ${userGoal ?: "MINDFUL_SPENDING"}. " +
+                    "The user's primary goal is: $goalName. " +
                     "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
                     "Use Australian financial context ($ AUD, fortnightly pay cycles, local retail terms). " +
                     "CRITICAL: Do NOT attempt unverified mental arithmetic or fabricate transaction figures. " +
@@ -383,27 +378,32 @@ open class AIRemoteDataSource @Inject constructor(
         val promptContent = buildString {
             if (previousReceipt != null) {
                 append("Immediately preceding verified calculation:\n")
-                append("- Summary: ${previousReceipt.summary}\n")
+                append("- Summary: ${CurrencySanitizer.sanitize(previousReceipt.summary)}\n")
                 if (previousReceipt.value != null) {
                     append("- Verified amount: $${String.format(java.util.Locale.US, "%.2f", previousReceipt.value)}\n")
                 }
             }
-            if (recentMessages.isNotEmpty()) {
-                append("Recent conversation turns:\n")
-                recentMessages.takeLast(4).forEach {
-                    append("${it.sender.name}: ${it.text}\n")
-                }
-            }
+            appendRecentDialogueTurns(recentMessages)
             append("User message: \"$prompt\"")
         }
 
         return try {
             val response = model.generateContent(promptContent)
-            response.text?.trim()?.takeIf { it.isNotBlank() }
+            val text = response.text?.trim()?.takeIf { it.isNotBlank() }
                 ?: "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
+            CurrencySanitizer.sanitize(text)
         } catch (e: Exception) {
             Log.e(TAG, "Conversational guidance failed: ${e.message}", e)
             "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
+        }
+    }
+
+    private fun StringBuilder.appendRecentDialogueTurns(recentMessages: List<ChatMessage>) {
+        if (recentMessages.isNotEmpty()) {
+            append("Recent conversation turns:\n")
+            recentMessages.takeLast(4).forEach {
+                append("${it.sender.name}: ${it.text}\n")
+            }
         }
     }
 

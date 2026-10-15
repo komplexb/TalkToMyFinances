@@ -2,14 +2,18 @@ package com.talktomyfinances.android.ui.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.talktomyfinances.android.data.datasource.AIRemoteDataSource
+import com.talktomyfinances.android.data.datasource.AIChatDataSource
 import com.talktomyfinances.android.data.repository.AuthRepository
 import com.talktomyfinances.android.domain.AuditorRepository
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.ChatRepository
-import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.domain.CurrencySanitizer
 import com.talktomyfinances.android.domain.LiveVoiceManager
+import com.talktomyfinances.android.domain.MessageSender
 import com.talktomyfinances.android.domain.ProfileStore
+import com.talktomyfinances.android.domain.VisualCard
+import com.talktomyfinances.android.domain.VisualCardItem
+import com.talktomyfinances.android.domain.VisualCardType
 import com.talktomyfinances.android.domain.VoiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +43,7 @@ data class ChatUiState(
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
-    private val aiRemoteDataSource: com.talktomyfinances.android.data.datasource.AIChatDataSource,
+    private val aiChatDataSource: AIChatDataSource,
     private val auditorRepository: AuditorRepository,
     private val authRepository: AuthRepository,
     private val liveVoiceManager: LiveVoiceManager,
@@ -150,7 +154,7 @@ class ChatViewModel @Inject constructor(
                 val recentTurns = _messagesFlow.value.takeLast(4)
 
                 // 1. Intent Parsing via Firebase AI Logic (gemini-3.8-flash) with context resolution
-                val spec = aiRemoteDataSource.parseFinancialIntent(
+                val spec = aiChatDataSource.parseFinancialIntent(
                     prompt = trimmed,
                     previousReceipt = previousReceipt,
                     recentMessages = recentTurns
@@ -161,11 +165,11 @@ class ChatViewModel @Inject constructor(
                 // route directly to Track B for empathetic coaching grounded in user goals and recent context.
                 if (spec.isOutOfSpec) {
                     val userGoal = try {
-                        profileStore.load()?.goal?.name
+                        profileStore.load()?.goal
                     } catch (_: Exception) {
                         null
                     }
-                    val guidanceText = aiRemoteDataSource.generateConversationalGuidance(
+                    val guidanceText = aiChatDataSource.generateConversationalGuidance(
                         prompt = trimmed,
                         recentMessages = recentTurns,
                         previousReceipt = previousReceipt,
@@ -182,16 +186,41 @@ class ChatViewModel @Inject constructor(
                 // Track A (Verifiable Math):
                 // 2. Deterministic Math via Cloud Run Auditor (/compute)
                 val auditResult = auditorRepository.compute(spec)
-                val receipt = auditResult.getOrThrow()
+                val rawReceipt = auditResult.getOrThrow()
+                val receipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
 
                 // 3. Plain-English Readability Check via gemini-3.5-flash-lite Judge
-                val finalProse = aiRemoteDataSource.evaluateWithJudge(receipt.summary, receipt.value)
+                val finalProse = aiChatDataSource.evaluateWithJudge(receipt.summary, receipt.value)
 
-                // 4. Save Assistant turn with Audit Receipt to Firestore
+                // 4. Assemble inline Visual Card for Track A verifiable math
+                val visualCard = if (receipt.value != null) {
+                    val title = when {
+                        receipt.spec.includedCategories.isNotEmpty() ->
+                            receipt.spec.includedCategories.joinToString() + " Spending"
+                        receipt.spec.includedMerchants.isNotEmpty() ->
+                            receipt.spec.includedMerchants.joinToString() + " Spending"
+                        else -> "Spending Breakdown"
+                    }
+                    VisualCard(
+                        cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                        title = title,
+                        totalAmount = receipt.value,
+                        items = if (receipt.spec.includedCategories.isNotEmpty()) {
+                            receipt.spec.includedCategories.map {
+                                VisualCardItem(category = it, amount = receipt.value, percentage = 100.0)
+                            }
+                        } else emptyList(),
+                        auditReceipt = receipt,
+                        timeframe = receipt.spec.dateWindow.type.name
+                    )
+                } else null
+
+                // 5. Save Assistant turn with Audit Receipt and Visual Card to Firestore
                 val assistantMsg = ChatMessage(
                     sender = MessageSender.ASSISTANT,
                     text = finalProse,
-                    auditReceipt = receipt
+                    auditReceipt = receipt,
+                    visualCard = visualCard
                 )
                 chatRepository.saveMessage(uid, assistantMsg)
             } catch (e: Exception) {
