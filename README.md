@@ -173,10 +173,16 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
      GEMINI_API_KEY=AIzaSy...
      ```
 2. **Start Development Environment (One Command):**
-   ```sh
-   make dev     # or `npm run dev`
-   ```
-   *This automatically sets up `adb reverse` port forwarding and starts the local Python uvicorn backend on port 8000.*
+   - **For Emulators & USB-connected Devices**:
+     ```sh
+     make dev     # or `npm run dev`
+     ```
+     *This starts the Python uvicorn backend on port 8000 AND runs a continuous background ADB reverse watcher so any connected emulator or USB device automatically routes `http://127.0.0.1:8000` to your host machine.*
+   - **For Physical Devices over Wi-Fi / LAN**:
+     ```sh
+     make dev-device     # or `npm run dev:device`
+     ```
+     *This starts the backend server, maintains ADB reverse, and prints your local LAN IP address(es) (e.g. `http://192.168.1.50:8000`) to configure in Remote Config when testing over Wi-Fi without USB.*
 
 ---
 
@@ -184,13 +190,14 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
 
 Instead of remembering paths or individual server flags, use the root shortcuts:
 
-| Task               | Command                                 | Description                                                             |
-|:-------------------|:----------------------------------------|:------------------------------------------------------------------------|
-| **Start Dev Mode** | `make dev` *(or `npm run dev`)*         | Configures `adb reverse` port forwarding and starts the backend server. |
-| **Backend Server** | `make backend` *(or `npm run backend`)* | Runs the Python uvicorn backend server on port 8000.                    |
-| **ADB Reverse**    | `make reverse` *(or `npm run reverse`)* | Runs `adb reverse tcp:8000 tcp:8000` for physical devices/emulators.    |
-| **Run All Tests**  | `make test` *(or `npm run test`)*       | Executes Android unit tests and Python backend tests.                   |
-| **Build Android**  | `make build` *(or `npm run build`)*     | Assembles the Android debug APK.                                        |
+| Task                                 | Command                                         | Description                                                                                               |
+|:-------------------------------------|:------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
+| **Start Dev Mode**                   | `make dev` *(or `npm run dev`)*                 | Starts backend server & background ADB reverse watcher (for emulator + USB physical device).               |
+| **Start Dev (Physical Device/LAN)**  | `make dev-device` *(or `npm run dev:device`)*   | Starts backend server, prints local LAN IPs for Wi-Fi testing, & maintains ADB reverse for connected devices. |
+| **Backend Server**                   | `make backend` *(or `npm run backend`)*         | Runs the Python uvicorn backend server on port 8000.                                                     |
+| **ADB Reverse**                      | `make reverse` *(or `npm run reverse`)*         | Runs `adb reverse tcp:8000 tcp:8000` once for all connected devices/emulators.                             |
+| **Run All Tests**                    | `make test` *(or `npm run test`)*               | Executes Android unit tests and Python backend tests.                                                     |
+| **Build Android**                    | `make build` *(or `npm run build`)*             | Assembles the Android debug APK.                                                                          |
 
 ---
 
