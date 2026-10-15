@@ -6,12 +6,13 @@ from datetime import date, timedelta
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
-from auditor.models import AuditReceipt, AuditResponse, DateWindow, FinancialQuerySpec, InsightChip
+from auditor.models import AuditReceipt, AuditResponse, FinancialQuerySpec, InsightChip
 from auditor.prompt_templates import render_prompt
 
 # prompts/intent-parser-template-v1-0-0.prompt — the Intent Parser's system prompt
