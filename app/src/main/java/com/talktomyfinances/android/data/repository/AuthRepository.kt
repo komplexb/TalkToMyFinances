@@ -5,12 +5,19 @@ import com.talktomyfinances.android.data.datasource.AuthRemoteDataSource
 import com.talktomyfinances.android.data.model.User
 import javax.inject.Inject
 
-class AuthRepository @Inject constructor(
-    private val authRemoteDataSource: AuthRemoteDataSource
-) {
-    val currentUser: FirebaseUser? get() = authRemoteDataSource.currentUser
+interface AuthRepository {
+    val currentUser: FirebaseUser?
+    val currentUserId: String? get() = currentUser?.uid
+    suspend fun createAnonymousAccount(): User
+}
 
-    suspend fun createAnonymousAccount(): User {
+class FirebaseAuthRepository @Inject constructor(
+    private val authRemoteDataSource: AuthRemoteDataSource
+) : AuthRepository {
+    override val currentUser: FirebaseUser? get() = authRemoteDataSource.currentUser
+    override val currentUserId: String? get() = currentUser?.uid
+
+    override suspend fun createAnonymousAccount(): User {
         return authRemoteDataSource.createAnonymousAccount()
     }
 }

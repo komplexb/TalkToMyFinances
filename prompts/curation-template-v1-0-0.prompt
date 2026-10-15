@@ -10,4 +10,4 @@ Given the user's financial goal '{{goal}}', select 3 most relevant insight chips
 {{catalog}}
 
 Select exactly 2 chips matching or helping their goal '{{goal}}' and 1 serendipity chip (is_serendipity=true).
-Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity'.
+Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity', 'drilldown_prompt'.

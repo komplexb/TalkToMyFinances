@@ -69,7 +69,7 @@ fun InsightsContent(
                     Text(stringResource(R.string.store_finder_retry))
                 }
             }
-            is InsightsUiState.Loaded -> state.chips.forEach { ChipCard(it) { openChat(it.text) } }
+            is InsightsUiState.Loaded -> state.chips.forEach { ChipCard(it) { openChat(it.drilldownPrompt ?: it.text) } }
         }
     }
 }

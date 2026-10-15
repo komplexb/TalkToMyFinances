@@ -35,7 +35,7 @@ def test_render_curation_prompt():
     assert "Given the user's financial goal 'SAVINGS'" in rendered
     assert rendered.count("'SAVINGS'") == 2  # goal appears in two sentences
     assert "[{\"id\": 1}]" in rendered
-    assert rendered.endswith("keys 'text', 'recency', 'isSerendipity'.")
+    assert rendered.endswith("keys 'text', 'recency', 'isSerendipity', 'drilldown_prompt'.")
 
 
 def test_render_prompt_missing_file_raises():

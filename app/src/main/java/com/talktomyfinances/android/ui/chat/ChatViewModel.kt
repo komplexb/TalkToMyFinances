@@ -9,6 +9,7 @@ import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.ChatRepository
 import com.talktomyfinances.android.domain.MessageSender
 import com.talktomyfinances.android.domain.LiveVoiceManager
+import com.talktomyfinances.android.domain.ProfileStore
 import com.talktomyfinances.android.domain.VoiceState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,10 +39,11 @@ data class ChatUiState(
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
-    private val aiRemoteDataSource: AIRemoteDataSource,
+    private val aiRemoteDataSource: com.talktomyfinances.android.data.datasource.AIChatDataSource,
     private val auditorRepository: AuditorRepository,
     private val authRepository: AuthRepository,
-    private val liveVoiceManager: LiveVoiceManager
+    private val liveVoiceManager: LiveVoiceManager,
+    private val profileStore: ProfileStore
 ) : ViewModel() {
 
     private val _inputText = MutableStateFlow("")
@@ -81,12 +83,12 @@ class ChatViewModel @Inject constructor(
     }
 
     private suspend fun getOrEnsureUserId(): String? {
-        val current = authRepository.currentUser
-        if (current != null) return current.uid
+        val current = authRepository.currentUserId
+        if (current != null) return current
 
         return try {
-            authRepository.createAnonymousAccount()
-            authRepository.currentUser?.uid
+            val user = authRepository.createAnonymousAccount()
+            authRepository.currentUserId ?: user.authId.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             _error.value = "Failed to authenticate: ${e.message}"
             null
@@ -144,21 +146,40 @@ class ChatViewModel @Inject constructor(
             }
 
             try {
-                // 1. Intent Parsing via Firebase AI Logic (gemini-3.8-flash)
-                val spec = aiRemoteDataSource.parseFinancialIntent(trimmed)
+                val previousReceipt = _messagesFlow.value.lastOrNull { it.auditReceipt != null }?.auditReceipt
+                val recentTurns = _messagesFlow.value.takeLast(4)
 
-                // Out-of-spec queries (advice, habit descriptions, "what if" simulations)
-                // map to no audited primitive: answer politely instead of forcing a number.
+                // 1. Intent Parsing via Firebase AI Logic (gemini-3.8-flash) with context resolution
+                val spec = aiRemoteDataSource.parseFinancialIntent(
+                    prompt = trimmed,
+                    previousReceipt = previousReceipt,
+                    recentMessages = recentTurns
+                )
+
+                // Track B (Conversational Guidance & Follow-ups):
+                // Out-of-spec queries (advice, habit descriptions, "what if" simulations, guidance)
+                // route directly to Track B for empathetic coaching grounded in user goals and recent context.
                 if (spec.isOutOfSpec) {
+                    val userGoal = try {
+                        profileStore.load()?.goal?.name
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val guidanceText = aiRemoteDataSource.generateConversationalGuidance(
+                        prompt = trimmed,
+                        recentMessages = recentTurns,
+                        previousReceipt = previousReceipt,
+                        userGoal = userGoal
+                    )
                     val assistantMsg = ChatMessage(
                         sender = MessageSender.ASSISTANT,
-                        text = spec.outOfSpecReason?.takeIf { it.isNotBlank() }
-                            ?: "That's beyond what I can verify from your transactions, but I'm happy to help if you rephrase it as a spending question."
+                        text = guidanceText
                     )
                     chatRepository.saveMessage(uid, assistantMsg)
                     return@launch
                 }
 
+                // Track A (Verifiable Math):
                 // 2. Deterministic Math via Cloud Run Auditor (/compute)
                 val auditResult = auditorRepository.compute(spec)
                 val receipt = auditResult.getOrThrow()
