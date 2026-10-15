@@ -27,7 +27,7 @@ class ChatDomainTest {
     @Test
     fun financialQuerySpecSerializesWithSnakeCaseKeys() {
         val spec = FinancialQuerySpec(
-            targetMetric = TargetMetric.MONTHLY_AVERAGE,
+            targetMetric = TargetMetric.PERIOD_AVERAGE,
             includedMerchants = listOf("Uber", "Lyft"),
             excludedMerchants = listOf("Uber Eats"),
             includedCategories = listOf("Transportation"),
@@ -38,14 +38,14 @@ class ChatDomainTest {
         )
 
         val encoded = json.encodeToString(FinancialQuerySpec.serializer(), spec)
-        assertTrue("Expected target_metric in $encoded", encoded.contains("\"target_metric\":\"MONTHLY_AVERAGE\""))
+        assertTrue("Expected target_metric in $encoded", encoded.contains("\"target_metric\":\"PERIOD_AVERAGE\""))
         assertTrue("Expected included_merchants in $encoded", encoded.contains("\"included_merchants\""))
         assertTrue("Expected Uber in $encoded", encoded.contains("\"Uber\""))
         assertTrue("Expected denominator_strategy in $encoded", encoded.contains("\"denominator_strategy\":\"ACTIVE_PERIODS_ONLY\""))
 
         val decoded = json.decodeFromString(FinancialQuerySpec.serializer(), encoded)
         assertEquals(spec, decoded)
-        assertEquals(TargetMetric.MONTHLY_AVERAGE, decoded.targetMetric)
+        assertEquals(TargetMetric.PERIOD_AVERAGE, decoded.targetMetric)
         assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
         assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
     }
@@ -88,7 +88,7 @@ class ChatDomainTest {
         assertTrue(sumReceipt.summary.contains("${'$'}253.50"))
 
         // 2. Monthly Average
-        val avgSpec = FinancialQuerySpec(targetMetric = TargetMetric.MONTHLY_AVERAGE)
+        val avgSpec = FinancialQuerySpec(targetMetric = TargetMetric.PERIOD_AVERAGE)
         val avgReceipt = stub.compute(avgSpec).getOrThrow()
         assertEquals(253.50, avgReceipt.value ?: 0.0, 0.001)
         assertTrue(avgReceipt.summary.contains("Average monthly spend"))

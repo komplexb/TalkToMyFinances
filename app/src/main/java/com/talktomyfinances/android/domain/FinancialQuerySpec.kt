@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class TargetMetric {
     @SerialName("TOTAL_SUM") TOTAL_SUM,
-    @SerialName("MONTHLY_AVERAGE") MONTHLY_AVERAGE,
+    @SerialName("AVERAGE_TRANSACTION") AVERAGE_TRANSACTION,
+    @SerialName("PERIOD_AVERAGE") PERIOD_AVERAGE,
     @SerialName("TRANSACTION_COUNT") TRANSACTION_COUNT,
     @SerialName("RUN_RATE") RUN_RATE
 }
@@ -27,6 +28,29 @@ enum class DenominatorStrategy {
 }
 
 @Serializable
+enum class DateWindowType {
+    @SerialName("LAST_MONTH") LAST_MONTH,
+    @SerialName("LAST_30_DAYS") LAST_30_DAYS,
+    @SerialName("THIS_QUARTER") THIS_QUARTER,
+    @SerialName("SIX_MONTHS") SIX_MONTHS,
+    @SerialName("YTD") YTD,
+    @SerialName("ALL_TIME") ALL_TIME,
+    @SerialName("CUSTOM") CUSTOM
+}
+
+@Serializable
+data class DateWindow(
+    @SerialName("type")
+    val type: DateWindowType = DateWindowType.ALL_TIME,
+
+    @SerialName("start")
+    val start: String? = null, // YYYY-MM-DD (CUSTOM only)
+
+    @SerialName("end")
+    val end: String? = null // YYYY-MM-DD (CUSTOM only)
+)
+
+@Serializable
 data class FinancialQuerySpec(
     @SerialName("target_metric")
     val targetMetric: TargetMetric = TargetMetric.TOTAL_SUM,
@@ -43,6 +67,9 @@ data class FinancialQuerySpec(
     @SerialName("excluded_categories")
     val excludedCategories: List<String> = emptyList(),
 
+    @SerialName("date_window")
+    val dateWindow: DateWindow = DateWindow(),
+
     @SerialName("temporal_grain")
     val temporalGrain: TemporalGrain = TemporalGrain.MONTH,
 
@@ -53,7 +80,13 @@ data class FinancialQuerySpec(
     val excludePending: Boolean = true,
 
     @SerialName("exclude_internal_transfers")
-    val excludeInternalTransfers: Boolean = true
+    val excludeInternalTransfers: Boolean = true,
+
+    @SerialName("is_out_of_spec")
+    val isOutOfSpec: Boolean = false,
+
+    @SerialName("out_of_spec_reason")
+    val outOfSpecReason: String? = null
 )
 
 @Serializable

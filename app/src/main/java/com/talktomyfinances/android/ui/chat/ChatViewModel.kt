@@ -147,6 +147,18 @@ class ChatViewModel @Inject constructor(
                 // 1. Intent Parsing via Firebase AI Logic (gemini-3.8-flash)
                 val spec = aiRemoteDataSource.parseFinancialIntent(trimmed)
 
+                // Out-of-spec queries (advice, habit descriptions, "what if" simulations)
+                // map to no audited primitive: answer politely instead of forcing a number.
+                if (spec.isOutOfSpec) {
+                    val assistantMsg = ChatMessage(
+                        sender = MessageSender.ASSISTANT,
+                        text = spec.outOfSpecReason?.takeIf { it.isNotBlank() }
+                            ?: "That's beyond what I can verify from your transactions, but I'm happy to help if you rephrase it as a spending question."
+                    )
+                    chatRepository.saveMessage(uid, assistantMsg)
+                    return@launch
+                }
+
                 // 2. Deterministic Math via Cloud Run Auditor (/compute)
                 val auditResult = auditorRepository.compute(spec)
                 val receipt = auditResult.getOrThrow()

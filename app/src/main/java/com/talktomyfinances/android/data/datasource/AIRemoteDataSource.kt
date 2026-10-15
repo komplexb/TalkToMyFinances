@@ -234,17 +234,26 @@ class AIRemoteDataSource @Inject constructor(
                     "You are an Intent Parser for financial queries in personal finance. " +
                     "Map user queries into a JSON object matching this schema:\n" +
                     "{\n" +
-                    "  \"target_metric\": \"MONTHLY_AVERAGE\" | \"TOTAL_SUM\" | \"TRANSACTION_COUNT\" | \"RUN_RATE\",\n" +
+                    "  \"target_metric\": \"PERIOD_AVERAGE\" | \"TOTAL_SUM\" | \"AVERAGE_TRANSACTION\" | \"TRANSACTION_COUNT\" | \"RUN_RATE\",\n" +
                     "  \"included_merchants\": [string],\n" +
                     "  \"excluded_merchants\": [string],\n" +
                     "  \"included_categories\": [string],\n" +
                     "  \"excluded_categories\": [string],\n" +
+                    "  \"date_window\": {\"type\": \"LAST_MONTH\" | \"LAST_30_DAYS\" | \"THIS_QUARTER\" | \"SIX_MONTHS\" | \"YTD\" | \"ALL_TIME\" | \"CUSTOM\", \"start\": string|null, \"end\": string|null},\n" +
                     "  \"temporal_grain\": \"WEEK\" | \"PAY_CYCLE\" | \"MONTH\" | \"QUARTER\" | \"YEAR\",\n" +
                     "  \"denominator_strategy\": \"ACTIVE_PERIODS_ONLY\" | \"ALL_CALENDAR_PERIODS\",\n" +
                     "  \"exclude_pending\": true,\n" +
-                    "  \"exclude_internal_transfers\": true\n" +
+                    "  \"exclude_internal_transfers\": true,\n" +
+                    "  \"is_out_of_spec\": false,\n" +
+                    "  \"out_of_spec_reason\": string|null\n" +
                     "}\n" +
-                    "Rules: Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript."
+                    "Rules:\n" +
+                    "- Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript.\n" +
+                    "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
+                    "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
+                    "- date_window: set type when the query names a period ('last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
+                    "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, or a 'what if' simulation — " +
+                    "set is_out_of_spec to true with a one-line out_of_spec_reason, and leave all other fields at their defaults."
                 )
             }
         )
