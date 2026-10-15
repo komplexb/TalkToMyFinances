@@ -30,7 +30,7 @@ Guide the implementation with these project rules:
 
 ## Execution
 
-Call the Skill tool with `implement` (or run `/implement`) with the ticket reference, adhering strictly to the workflow rules above.
+Call the Skill tool with `implement` (or run `/implement` or `@implement`) with the ticket reference, adhering strictly to the workflow rules above.
 
 ## Manual Testing
 Instruct the developer how to manually test the new change/feature.
