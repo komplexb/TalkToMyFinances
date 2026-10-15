@@ -4,6 +4,7 @@
   "description": "Talk to My Finances monorepo scripts runner",
   "scripts": {
     "dev": "make dev",
+    "dev:device": "make dev-device",
     "backend": "make backend",
     "reverse": "make reverse",
     "test": "make test",

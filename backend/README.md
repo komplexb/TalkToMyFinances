@@ -37,11 +37,17 @@ The `change-me` values in `.env` are local placeholders — the two key lines
 must simply match each other. If you will ever share your endpoint, replace
 them with a random value: `openssl rand -hex 16`.
 
-Terminal 1 — start the mock (note `0.0.0.0`: the Android emulator reaches the
-host machine via `10.0.2.2`):
+Terminal 1 — start the server from root directory (Note: `make dev` maintains background ADB reverse `tcp:8000 -> tcp:8000` for emulators and USB devices; use `make dev-device` for physical devices over Wi-Fi/LAN):
+
+```bash
+make dev        # or `make dev-device` for physical device LAN testing
+```
+
+Alternatively, start uvicorn directly (note `0.0.0.0`: the Android emulator reaches the
+host machine via `10.0.2.2` or via `adb reverse`):
 
 ```powershell
-uv run -m uvicorn mock_banksync.main:app --host 0.0.0.0 --port 8000
+uv run -m uvicorn auditor.main:app --host 0.0.0.0 --port 8000
 ```
 
 Terminal 2 — run the example client and the tests (the client's default range

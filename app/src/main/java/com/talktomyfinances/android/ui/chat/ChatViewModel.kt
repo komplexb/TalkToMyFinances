@@ -174,6 +174,7 @@ class ChatViewModel @Inject constructor(
                 )
                 chatRepository.saveMessage(uid, assistantMsg)
             } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Error calculating response for query: $trimmed", e)
                 val errorMsg = ChatMessage(
                     sender = MessageSender.ASSISTANT,
                     text = "I ran into an issue calculating that. Let's try rephrasing your question."

@@ -72,16 +72,27 @@ class RoutingInsightsRepository @Inject constructor(
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult {
         val url = urlProvider().trim()
         if (url.isBlank()) return stub.loadInsights(profile)
-        return try {
-            CloudRunInsightsRepository(url).loadInsights(profile)
-        } catch (e: Exception) {
-            try {
-                android.util.Log.w("Insights", "Failed to load insights from $url, falling back to stub", e)
-            } catch (_: Throwable) {
-                // Ignore log error in unmocked unit tests
+
+        val urlsToTry = mutableListOf(url)
+        if (url.contains("127.0.0.1") || url.contains("localhost")) {
+            val emulatorUrl = url.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2")
+            if (!urlsToTry.contains(emulatorUrl)) {
+                urlsToTry.add(emulatorUrl)
             }
-            stub.loadInsights(profile)
         }
+
+        for (targetUrl in urlsToTry) {
+            try {
+                return CloudRunInsightsRepository(targetUrl).loadInsights(profile)
+            } catch (e: Exception) {
+                try {
+                    android.util.Log.w("Insights", "Failed to load insights from $targetUrl, trying next URL or stub", e)
+                } catch (_: Throwable) {
+                    // Ignore log error in unmocked unit tests
+                }
+            }
+        }
+        return stub.loadInsights(profile)
     }
 }
 
