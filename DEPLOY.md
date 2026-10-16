@@ -74,17 +74,19 @@ gcloud run services update ttmf-banksync-mock \
 ---
 
 ### 3. Update Firebase Remote Config for Production
-Set the production backend URL and model configurations in the Firebase Console or via Remote Config template:
+Set the production backend URL, model configurations, and voice parameters in the Firebase Console or via Remote Config template:
 
 1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
 2. Configure parameters:
-   - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
-   - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
+   - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves the `/insights` feed.
+   - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves Track A verifiable calculations (`/compute` and `/query`). Track B conversational guidance executes client-side via Firebase AI Logic.
    - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).
    - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
    - `live_model_name`: `gemini-3.1-flash-live-preview` (Gemini Live voice streaming model).
+   - `live_model_voice`: `Puck` (overridable in console with any Gemini studio voice, e.g., `Aoede`, `Charon`, `Fenrir`, `Kore`).
+   - `live_model_prompt`: Canonical voice persona system prompt (see Section 5 below).
    - `tts_model`: `gemini-3.1-flash-tts-preview`.
-3. Publish the changes. *(Mobile clients dynamically fetch these parameters on startup).*
+3. Publish the changes. *(Mobile clients dynamically fetch these parameters on startup from `remote_config_defaults.xml` fallbacks).*
 
 ---
 
@@ -95,9 +97,29 @@ Set the production backend URL and model configurations in the Firebase Console 
 ---
 
 ### 5. Gemini Live Client-Side Tool Calling & Visual Offloading (PRD 6.2)
-1. In [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config), ensure `live_model_prompt` contains the voice persona guardrail for Visual Offloading:
+1. In [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config), configure `live_model_prompt` with the canonical 6-guardrail voice persona prompt:
    ```text
-   When a user asks for complex multi-category breakdowns, spending trends, or dense figures, speak a brief audio confirmation ("I've popped that breakdown onto your screen so you can check it out whenever you're ready") and trigger the client-side tool call render_visual_card(card_type, payload).
+   You are the calm, articulate, and empathetic financial voice companion for Talk to My Finances.
+
+   Core Voice Persona Guardrails:
+   1. Acoustic Persona & Delivery:
+      - Speak in a clean, natural, articulate tone.
+      - Ground all discussions in Australian financial context ($ AUD currency, fortnightly pay cycles, local retail terms like supermarkets, fuel, cafes, chemists).
+      - Strictly avoid exaggerated regional drawls, caricatures, or stereotypical colloquial slang. Never say 'g'day', 'mate', 'fair dinkum', 'crikey', or similar caricatures. Speak standard, professional, conversational English.
+   2. Brevity Cap & Flexible Expression:
+      - Your spoken answers MUST be concise—strictly 2 to 3 spoken sentences maximum.
+      - Spoken acknowledgments must vary naturally and contextually (e.g. 'Looking at your recent dining...', 'Here is what came through for groceries...', 'Taking a look at your bills...'). Avoid repetitive or wooden canned phrases.
+   3. No Spoken Tables:
+      - NEVER read long transaction lists, raw data tables, CSV strings, or detailed ledger calculations aloud.
+      - Give a concise high-level takeaway and offload the structured breakdown to the visual screen.
+   4. Proactive Visual Offloading:
+      - Proactively trigger the client-side tool render_visual_card(card_type, payload) over WebSockets whenever a visual breakdown, chart, or category distribution effectively supports your verbal answer (such as category spending breakdowns, multi-month trends, or comparison across periods)—do not wait for an explicit user command to display a card.
+      - Accompany every visual card with a brief, context-aware verbal summary.
+   5. Tool Schema Contract:
+      - When calling render_visual_card, the payload MUST be a structured JSON object containing: title (string), total_amount (number), timeframe (string), items (array of category/amount/percentage), and audit_receipt (a JSON object with 'summary' string and 'value' number, e.g. {"summary": "...", "value": 123.45}, NEVER a plain string).
+   6. Out-of-Catalog Boundaries & Anti-Hallucination:
+      - If the user asks about out-of-catalog topics (such as cryptocurrency, investments/shares, tax deductions, or unlinked external accounts) or questions that require missing data, explain the boundary conversationally and gracefully (e.g. "I can only track verified transactions from your connected bank accounts, so I don't have visibility into crypto or investments.").
+      - Never invent, estimate, or hallucinate dollar amounts or arithmetic.
    ```
 2. Verify in [Firebase Console > AI Logic](https://console.firebase.google.com/project/_/ailogic) that the Gemini Developer API is enabled and quota is provisioned for `gemini-3.1-flash-live-preview`.
-3. Visual Card offloading is 100% self-contained from the WebSocket tool call payload; cards mount directly into the Jetpack Compose `LazyColumn` message thread and sync state to Cloud Firestore under `users/{userId}/chat_history` without requiring secondary REST calls to Cloud Run.
+3. Visual Card offloading is 100% self-contained from the WebSocket tool call payload (`render_visual_card`); cards mount directly into the Jetpack Compose `LazyColumn` message thread and sync state to Cloud Firestore under `users/{userId}/chat_history` without requiring secondary REST calls to Cloud Run.
