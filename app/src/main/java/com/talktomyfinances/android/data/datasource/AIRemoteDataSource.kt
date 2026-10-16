@@ -69,11 +69,7 @@ open class AIRemoteDataSource @Inject constructor(
     private val aiModel: FirebaseAI,
     private val remoteConfig: FirebaseRemoteConfig
 ) : AIChatDataSource {
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        coerceInputValues = true
-    }
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val hybridGenerativeModel = aiModel.generativeModel(
         modelName = remoteConfig.getString(HYBRID_CLOUD_MODEL_KEY),
@@ -322,13 +318,12 @@ open class AIRemoteDataSource @Inject constructor(
             systemInstruction = content {
                 text(
                     "You are a reading-level quality judge for personal finance responses. " +
-                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon.\n" +
-                    "Crucial Rules:\n" +
-                    "- NEVER alter, omit, or approximate dollar amounts or counts.\n" +
-                    "- Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00).\n" +
-                    "- State the answer directly in 1-2 active sentences.\n" +
-                    "- Do NOT append or include exclusion clauses or technical fine print (e.g. 'while ignoring pending transfers...', 'excluding internal transfers...', 'Counted:', 'Excluded:', 'Denominator:', date window codes) in the conversational response text. Technical audit fine print is presented separately in the UI audit receipt card.\n" +
-                    "- Reply with the final text only."
+                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
+                    "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
+                    "Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00). " +
+                    "If the input already adheres to plain English, return it unchanged. " +
+                    "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
+                    "Reply with the final text only."
                 )
             }
         )

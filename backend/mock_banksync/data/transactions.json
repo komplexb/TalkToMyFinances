@@ -8484,7 +8484,7 @@
     "currency": "AUD",
     "category": "Dining",
     "type": "debit",
-    "pending": true,
+    "pending": false,
     "accountId": "spending",
     "bankId": "demo",
     "merchantName": "SQ *CAFE NEWTOWN"
