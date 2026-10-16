@@ -1,0 +1,88 @@
+{
+  "conditions": [],
+  "parameters": {
+    "insights_base_url": {
+      "defaultValue": { "value": "" },
+      "description": "Cloud Run insights backend base URL. Blank = app uses the in-app stub. Set to the live ttmf Cloud Run URL once deployed (DEPLOY.md step 2)."
+    },
+    "auditor_base_url": {
+      "defaultValue": { "value": "" },
+      "description": "Cloud Run auditor backend base URL; falls back to insights_base_url when blank. Set to the live Cloud Run URL once deployed."
+    },
+    "chat_ai_model": {
+      "defaultValue": { "value": "gemini-3.8-flash" },
+      "description": "Primary chat / intent parser model (Firebase AI Logic)."
+    },
+    "judge_ai_model": {
+      "defaultValue": { "value": "gemini-3.5-flash-lite" },
+      "description": "Readability judge model (Firebase AI Logic)."
+    },
+    "hybrid_cloud_model": {
+      "defaultValue": { "value": "gemini-3.8-flash" },
+      "description": "Cloud model for hybrid (on-device preferred) generative calls."
+    },
+    "tts_model": {
+      "defaultValue": { "value": "gemini-3.1-flash-tts-preview" },
+      "description": "Text-to-speech model for spoken replies."
+    },
+    "live_model_name": {
+      "defaultValue": { "value": "gemini-3.1-flash-live-preview" },
+      "description": "Gemini Live model for voice streaming sessions (PRD 6.2)."
+    },
+    "live_model_voice": {
+      "defaultValue": { "value": "Puck" },
+      "description": "Voice used by the Gemini Live session."
+    },
+    "live_model_prompt": {
+      "defaultValue": {
+        "value": "You are the friendly, clear, plain-spoken financial voice companion for Talk to My Finances.\n\nCore Voice Persona Guardrails:\n1. Brevity Cap: Your spoken answers MUST be concise—strictly 2 to 3 spoken sentences maximum.\n2. No Spoken Tables: NEVER read long transaction lists, raw data tables, CSV strings, or detailed ledger calculations aloud. If the user asks for breakdowns or lists, give a high-level summary and explain you have placed the details on the screen.\n3. Grade 6–8 Plain English: Speak at a Grade 6–8 reading level in standard plain English. Use simple, direct active sentences.\n4. Exact Numbers: When mentioning numbers or dollar amounts, preserve the exact verified amounts without rounding or approximating.\n5. Visual Offloading and Tool Schema: When a user asks for complex multi-category breakdowns, spending trends, or dense figures, speak a clear, context-aware confirmation stating specifically what spending breakdown or topic is shown and trigger the client-side tool call render_visual_card(card_type, payload). Always state specifically what spending, timeframe, or category is shown. The payload parameter MUST contain audit_receipt as a JSON object with summary (string) and value (number) fields (e.g. {\"summary\": \"...\", \"value\": 123.45}), NEVER a plain string.\n6. Graceful Degradation and Anti-Hallucination: If a calculation cannot be performed, if data is missing, or if a tool execution returns an error, DO NOT invent, estimate, or make up any dollar amounts or spending breakdowns. Instead, inform the user: \"I cannot verify that calculation right now.\""
+      },
+      "description": "Voice persona system instruction incl. Visual Offloading guardrail (DEPLOY.md step 5). Mirrors remote_config_defaults.xml."
+    },
+    "classify_goal_prompt": {
+      "defaultValue": {
+        "value": "Classify the user's financial goal into exactly one of these categories: {{labels}}. Reply with the category name only. If the goal fits none of them, reply Mindful Spending. Goal: {{goal}}"
+      },
+      "description": "Onboarding goal classifier prompt. Placeholders: {{labels}}, {{goal}}."
+    },
+    "readability_rewrite_prompt": {
+      "defaultValue": {
+        "value": "Rewrite the text below at a Grade {{grade}} reading level. Use short sentences of 12 to 15 words, active voice, and everyday words. Keep every number and fact exactly the same. Reply with the rewritten text only.\n\n{{text}}"
+      },
+      "description": "Readability guard rewriter prompt. Placeholders: {{grade}}, {{text}}."
+    },
+    "hybrid_ingredients_prompt": {
+      "defaultValue": {
+        "value": "Please analyze this image and list all visible food ingredients. Output ONLY a comma-separated list of ingredients. Do not include any introductory text, headers, or concluding remarks. Provide the raw list only. Be specific with measurements where possible."
+      },
+      "description": "On-device ingredient extraction prompt."
+    },
+    "generate_recipe": {
+      "defaultValue": { "value": "generate-recipe-template-v1-0-0" },
+      "description": "AI Logic prompt template id (sample-app feature; unused by current UI)."
+    },
+    "generate_recipe_photo_gemini": {
+      "defaultValue": { "value": "generate-recipe-photo-gemini-template-v1-0-0" },
+      "description": "AI Logic prompt template id (sample-app feature; unused by current UI)."
+    },
+    "scan_meal": {
+      "defaultValue": { "value": "scan-meal-template-v1-0-0" },
+      "description": "AI Logic prompt template id (sample-app feature; unused by current UI)."
+    },
+    "find_stores": {
+      "defaultValue": { "value": "find-stores-template-v1-0-0" },
+      "description": "AI Logic prompt template id (sample-app feature; unused by current UI)."
+    },
+    "recipe_pairing": {
+      "defaultValue": { "value": "recipe-pairing-v1-0-0" },
+      "description": "AI Logic prompt template id (sample-app feature; unused by current UI)."
+    },
+    "recipe_pairing_voice_profile": {
+      "defaultValue": {
+        "value": "[Audio Profile: A French chef with a charming French accent][Scene: An elegant Parisian restaurant during a masterclass on food and wine pairing][Director's Notes: Speak as if you're a French chef who is an expert in pairing dishes with wines. Speak with warm enthusiasm and culinary sophistication]"
+      },
+      "description": "TTS voice profile prefix (sample-app feature; unused by current UI)."
+    }
+  },
+  "parameterGroups": {}
+}
