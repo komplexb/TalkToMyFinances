@@ -214,6 +214,15 @@ def resolve_window(
     if w.type == "CUSTOM" and w.start:
         start = _parse_date(w.start)
         end = _parse_date(w.end) if w.end else anchor
+    elif w.type == "THIS_WEEK":
+        # ISO Monday through as-of date (anchor)
+        start = anchor - timedelta(days=anchor.weekday())
+        end = anchor
+    elif w.type == "LAST_WEEK":
+        # Prior full Monday through Sunday
+        this_monday = anchor - timedelta(days=anchor.weekday())
+        start = this_monday - timedelta(days=7)
+        end = this_monday - timedelta(days=1)
     elif w.type == "LAST_MONTH":
         end = anchor.replace(day=1) - timedelta(days=1)
         start = end.replace(day=1)

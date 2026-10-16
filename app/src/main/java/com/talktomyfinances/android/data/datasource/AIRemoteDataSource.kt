@@ -264,7 +264,7 @@ open class AIRemoteDataSource @Inject constructor(
                     "  \"excluded_merchants\": [string],\n" +
                     "  \"included_categories\": [string],\n" +
                     "  \"excluded_categories\": [string],\n" +
-                    "  \"date_window\": {\"type\": \"LAST_MONTH\" | \"LAST_30_DAYS\" | \"THIS_QUARTER\" | \"SIX_MONTHS\" | \"YTD\" | \"ALL_TIME\" | \"CUSTOM\", \"start\": string|null, \"end\": string|null},\n" +
+                    "  \"date_window\": {\"type\": \"THIS_WEEK\" | \"LAST_WEEK\" | \"LAST_MONTH\" | \"LAST_30_DAYS\" | \"THIS_QUARTER\" | \"SIX_MONTHS\" | \"YTD\" | \"ALL_TIME\" | \"CUSTOM\", \"start\": string|null, \"end\": string|null},\n" +
                     "  \"temporal_grain\": \"WEEK\" | \"PAY_CYCLE\" | \"MONTH\" | \"QUARTER\" | \"YEAR\",\n" +
                     "  \"denominator_strategy\": \"ACTIVE_PERIODS_ONLY\" | \"ALL_CALENDAR_PERIODS\",\n" +
                     "  \"exclude_pending\": true,\n" +
@@ -276,7 +276,10 @@ open class AIRemoteDataSource @Inject constructor(
                     "- Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript.\n" +
                     "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
                     "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
-                    "- date_window: set type when the query names a period ('last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
+                    "- date_window: set type when the query names a period ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
+                    "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
+                    formatMerchantClustersPrompt() + "\n" +
+                    "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants (aggregates across all dining, including cafes and delivery).\n" +
                     "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context.\n" +
                     "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
                     "set is_out_of_spec to true with a one-line out_of_spec_reason, and leave all other fields at their defaults."
@@ -444,5 +447,23 @@ open class AIRemoteDataSource @Inject constructor(
 
         //Class TAG
         private const val TAG = "AIRemoteDataSource"
+
+        // Extensible merchant-level subcategory clusters
+        val CAFE_MERCHANTS = listOf("SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO")
+        val TAKEAWAY_MERCHANTS = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY")
+        val FUEL_MERCHANTS = listOf("BP FUEL", "SHELL FUEL")
+
+        val SUBCATEGORY_MERCHANT_CLUSTERS = mapOf(
+            "cafes or coffee" to CAFE_MERCHANTS,
+            "takeout, takeaway, or delivery" to TAKEAWAY_MERCHANTS,
+            "petrol or fuel" to FUEL_MERCHANTS
+        )
+
+        fun formatMerchantClustersPrompt(): String {
+            return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->
+                val listLiteral = merchants.joinToString(separator = "\", \"", prefix = "[\"", postfix = "\"]")
+                "  * Queries for '$queryTerms' -> map to included_merchants: $listLiteral and empty included_categories."
+            }
+        }
     }
 }
