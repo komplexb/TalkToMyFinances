@@ -3,7 +3,6 @@ package com.talktomyfinances.android.ui.chat
 import com.talktomyfinances.android.data.datasource.AIChatDataSource
 import com.talktomyfinances.android.data.repository.AuthRepository
 import com.talktomyfinances.android.data.repository.LiveVoiceRepositoryImpl
-import com.talktomyfinances.android.data.repository.LiveVoiceRepositoryImpl.Companion.DEFAULT_LIVE_PROMPT
 import com.talktomyfinances.android.data.repository.StubAuditorRepository
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
@@ -107,9 +106,26 @@ class LiveVoiceProtocolTest {
         ): String = "Guidance"
     }
 
+    private val canonicalLivePrompt: String by lazy {
+        val candidatePaths = listOf(
+            java.io.File("src/main/res/xml/remote_config_defaults.xml"),
+            java.io.File("app/src/main/res/xml/remote_config_defaults.xml")
+        )
+        val file = candidatePaths.firstOrNull { it.exists() }
+            ?: throw IllegalStateException("Could not find remote_config_defaults.xml")
+        val content = file.readText()
+        val startTag = "<key>live_model_prompt</key>"
+        val valueStartTag = "<value>"
+        val valueEndTag = "</value>"
+        val keyIndex = content.indexOf(startTag)
+        val valStart = content.indexOf(valueStartTag, keyIndex) + valueStartTag.length
+        val valEnd = content.indexOf(valueEndTag, valStart)
+        content.substring(valStart, valEnd).replace("&amp;", "&").trim()
+    }
+
     @Test
     fun voiceAssistantUsesCleanArticulateToneWithoutRegionalDrawlsOrCaricatureSlang() {
-        val prompt = DEFAULT_LIVE_PROMPT.lowercase()
+        val prompt = canonicalLivePrompt.lowercase()
 
         // Verifies prohibition of caricatures and regional drawls
         assertTrue(prompt.contains("strictly avoid exaggerated regional drawls") || prompt.contains("drawls"))
@@ -121,7 +137,7 @@ class LiveVoiceProtocolTest {
 
     @Test
     fun voiceAssistantAcousticPersonaReflectsAustralianRetailConventions() {
-        val prompt = DEFAULT_LIVE_PROMPT
+        val prompt = canonicalLivePrompt
 
         // Grounded in Australian financial conventions
         assertTrue(prompt.contains("Australian financial context"))
@@ -131,7 +147,7 @@ class LiveVoiceProtocolTest {
 
     @Test
     fun voiceAssistantAdheresToBrevityCapAndNoSpokenTables() {
-        val prompt = DEFAULT_LIVE_PROMPT
+        val prompt = canonicalLivePrompt
 
         // 2-3 sentence limit and no raw ledger tables
         assertTrue(prompt.contains("2 to 3 spoken sentences maximum"))
@@ -140,7 +156,7 @@ class LiveVoiceProtocolTest {
 
     @Test
     fun voiceAssistantEnforcesProactiveVisualOffloading() {
-        val prompt = DEFAULT_LIVE_PROMPT
+        val prompt = canonicalLivePrompt
 
         // Proactively triggers render_visual_card
         assertTrue(prompt.contains("Proactively trigger the client-side tool render_visual_card"))
@@ -149,7 +165,7 @@ class LiveVoiceProtocolTest {
 
     @Test
     fun voiceAssistantEnforcesFlexibleExpressionAndAvoidsRepetitiveCannedPhrases() {
-        val prompt = DEFAULT_LIVE_PROMPT
+        val prompt = canonicalLivePrompt
 
         // Contextual variance instead of robotic phrases
         assertTrue(prompt.contains("vary naturally and contextually"))
@@ -158,7 +174,7 @@ class LiveVoiceProtocolTest {
 
     @Test
     fun voiceAssistantExplainsOutOfCatalogBoundariesConversationallyWithoutHallucinations() {
-        val prompt = DEFAULT_LIVE_PROMPT
+        val prompt = canonicalLivePrompt
 
         // Out-of-catalog boundaries (crypto, investments, unlinked accounts)
         assertTrue(prompt.contains("out-of-catalog"))
