@@ -27,6 +27,8 @@ abstract class DomainBindingsModule {
     @Binds abstract fun auditor(impl: CloudRunAuditorRepository): AuditorRepository
     @Binds abstract fun chat(impl: com.talktomyfinances.android.data.repository.FirestoreChatRepository): com.talktomyfinances.android.domain.ChatRepository
     @Binds abstract fun liveVoice(impl: com.talktomyfinances.android.data.repository.LiveVoiceRepositoryImpl): com.talktomyfinances.android.domain.LiveVoiceManager
+    @Binds abstract fun auth(impl: com.talktomyfinances.android.data.repository.FirebaseAuthRepository): com.talktomyfinances.android.data.repository.AuthRepository
+    @Binds abstract fun aiChat(impl: com.talktomyfinances.android.data.datasource.AIRemoteDataSource): com.talktomyfinances.android.data.datasource.AIChatDataSource
 
     companion object {
         @Provides fun goalResolver(classifier: GoalClassifier) = GoalResolver(classifier)

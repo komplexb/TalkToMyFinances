@@ -83,6 +83,7 @@ class InsightChip(BaseModel):
     text: str
     recency: Literal["this_week", "this_pay_cycle", "last_30_days", "this_quarter", "six_months", "ytd"]
     isSerendipity: bool = False
+    drilldown_prompt: Optional[str] = None
 
 
 class AuditResponse(BaseModel):

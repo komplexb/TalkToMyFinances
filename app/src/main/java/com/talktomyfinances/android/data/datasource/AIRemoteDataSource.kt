@@ -25,6 +25,10 @@ import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import com.talktomyfinances.android.data.schema.MealSchema
 import com.talktomyfinances.android.data.schema.RecipeSchema
+import com.talktomyfinances.android.domain.AuditReceipt
+import com.talktomyfinances.android.domain.ChatMessage
+import com.talktomyfinances.android.domain.CurrencySanitizer
+import com.talktomyfinances.android.domain.FinancialGoal
 import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.google.firebase.perf.performance
 import com.google.firebase.perf.trace
@@ -38,11 +42,28 @@ import com.google.firebase.ai.type.retrievalConfig
 import com.talktomyfinances.android.data.schema.StoreFinderResult
 import com.talktomyfinances.android.data.schema.StoreSchema
 
+interface AIChatDataSource {
+    suspend fun parseFinancialIntent(
+        prompt: String,
+        previousReceipt: AuditReceipt? = null,
+        recentMessages: List<ChatMessage> = emptyList()
+    ): FinancialQuerySpec
+
+    suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String
+
+    suspend fun generateConversationalGuidance(
+        prompt: String,
+        recentMessages: List<ChatMessage> = emptyList(),
+        previousReceipt: AuditReceipt? = null,
+        userGoal: FinancialGoal? = null
+    ): String
+}
+
 @OptIn(PublicPreviewAPI::class)
-class AIRemoteDataSource @Inject constructor(
+open class AIRemoteDataSource @Inject constructor(
     private val aiModel: FirebaseAI,
     private val remoteConfig: FirebaseRemoteConfig
-) {
+) : AIChatDataSource {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val hybridGenerativeModel = aiModel.generativeModel(
@@ -222,7 +243,11 @@ class AIRemoteDataSource @Inject constructor(
         }
     }
 
-    suspend fun parseFinancialIntent(prompt: String): FinancialQuerySpec {
+    override suspend fun parseFinancialIntent(
+        prompt: String,
+        previousReceipt: AuditReceipt?,
+        recentMessages: List<ChatMessage>
+    ): FinancialQuerySpec {
         val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
         val model = aiModel.generativeModel(
             modelName = modelName,
@@ -252,14 +277,34 @@ class AIRemoteDataSource @Inject constructor(
                     "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
                     "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
                     "- date_window: set type when the query names a period ('last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
-                    "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, or a 'what if' simulation — " +
+                    "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context.\n" +
+                    "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
                     "set is_out_of_spec to true with a one-line out_of_spec_reason, and leave all other fields at their defaults."
                 )
             }
         )
 
+        val promptContent = buildString {
+            if (previousReceipt != null) {
+                append("Immediately preceding verified calculation:\n")
+                if (previousReceipt.spec.includedCategories.isNotEmpty()) {
+                    append("- Categories: ${previousReceipt.spec.includedCategories.joinToString()}\n")
+                }
+                if (previousReceipt.spec.includedMerchants.isNotEmpty()) {
+                    append("- Merchants: ${previousReceipt.spec.includedMerchants.joinToString()}\n")
+                }
+                append("- Window: ${previousReceipt.spec.dateWindow.type.name}\n")
+                append("- Summary: ${previousReceipt.summary}\n")
+                if (previousReceipt.value != null) {
+                    append("- Value: ${previousReceipt.value}\n")
+                }
+            }
+            appendRecentDialogueTurns(recentMessages)
+            append("User Query: $prompt")
+        }
+
         return try {
-            val response = model.generateContent(prompt)
+            val response = model.generateContent(promptContent)
             val raw = response.text ?: throw IllegalStateException("Empty response from intent parser model")
             val clean = raw.replace("```json", "").replace("```", "").trim()
             json.decodeFromString<FinancialQuerySpec>(clean)
@@ -269,7 +314,7 @@ class AIRemoteDataSource @Inject constructor(
         }
     }
 
-    suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
+    override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
         val judgeModelName = remoteConfig.getString(JUDGE_AI_MODEL_KEY).ifBlank { DEFAULT_JUDGE_MODEL }
         val judgeModel = aiModel.generativeModel(
             modelName = judgeModelName,
@@ -278,6 +323,7 @@ class AIRemoteDataSource @Inject constructor(
                     "You are a reading-level quality judge for personal finance responses. " +
                     "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
                     "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
+                    "Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00). " +
                     "If the input already adheres to plain English, return it unchanged. " +
                     "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
                     "Reply with the final text only."
@@ -285,18 +331,79 @@ class AIRemoteDataSource @Inject constructor(
             }
         )
 
+        val formattedAmount = if (verifiedAmount != null) {
+            String.format(java.util.Locale.US, "$%.2f", verifiedAmount)
+        } else null
+
+        val prompt = if (formattedAmount != null) {
+            "Prose to judge: \"$prose\". Must preserve exact currency amount: $formattedAmount. Ensure standard currency formatting without multiple decimal points."
+        } else {
+            "Prose to judge: \"$prose\". Ensure standard currency formatting without multiple decimal points."
+        }
+
         return try {
-            val prompt = if (verifiedAmount != null) {
-                "Prose to judge: \"$prose\". Must preserve exact number: \$$verifiedAmount."
-            } else {
-                "Prose to judge: \"$prose\"."
-            }
             val response = judgeModel.generateContent(prompt)
             val rewritten = response.text?.trim()
-            if (!rewritten.isNullOrBlank()) rewritten else prose
+            val textToClean = if (!rewritten.isNullOrBlank()) rewritten else prose
+            CurrencySanitizer.sanitize(textToClean)
         } catch (e: Exception) {
             Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
-            prose
+            CurrencySanitizer.sanitize(prose)
+        }
+    }
+
+    override suspend fun generateConversationalGuidance(
+        prompt: String,
+        recentMessages: List<ChatMessage>,
+        previousReceipt: AuditReceipt?,
+        userGoal: FinancialGoal?
+    ): String {
+        val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
+        val goalName = userGoal?.name ?: "MINDFUL_SPENDING"
+        val model = aiModel.generativeModel(
+            modelName = modelName,
+            systemInstruction = content {
+                text(
+                    "You are an empathetic, practical financial coach in an Australian personal finance app. " +
+                    "The user's primary goal is: $goalName. " +
+                    "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
+                    "Use Australian financial context ($ AUD, fortnightly pay cycles, local retail terms). " +
+                    "CRITICAL: Do NOT attempt unverified mental arithmetic or fabricate transaction figures. " +
+                    "Never output raw classifier/system diagnostic messages (such as 'Query is an open-ended request' or 'is_out_of_spec'). " +
+                    "If the user asks for financial tips or habit advice, offer empathetic guidance. If they want exact numbers, guide them on what spending question to ask."
+                )
+            }
+        )
+
+        val promptContent = buildString {
+            if (previousReceipt != null) {
+                append("Immediately preceding verified calculation:\n")
+                append("- Summary: ${CurrencySanitizer.sanitize(previousReceipt.summary)}\n")
+                if (previousReceipt.value != null) {
+                    append("- Verified amount: $${String.format(java.util.Locale.US, "%.2f", previousReceipt.value)}\n")
+                }
+            }
+            appendRecentDialogueTurns(recentMessages)
+            append("User message: \"$prompt\"")
+        }
+
+        return try {
+            val response = model.generateContent(promptContent)
+            val text = response.text?.trim()?.takeIf { it.isNotBlank() }
+                ?: "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
+            CurrencySanitizer.sanitize(text)
+        } catch (e: Exception) {
+            Log.e(TAG, "Conversational guidance failed: ${e.message}", e)
+            "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
+        }
+    }
+
+    private fun StringBuilder.appendRecentDialogueTurns(recentMessages: List<ChatMessage>) {
+        if (recentMessages.isNotEmpty()) {
+            append("Recent conversation turns:\n")
+            recentMessages.takeLast(4).forEach {
+                append("${it.sender.name}: ${it.text}\n")
+            }
         }
     }
 

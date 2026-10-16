@@ -27,9 +27,22 @@ open class StubInsightsRepository @Inject constructor() : InsightsRepository {
         delay(3_000.milliseconds)
         return InsightsResult(
             listOf(
-                InsightChip("Nice work on your cafe spending this week. You have room for a cheeky brunch!", RecencyWindow.THIS_WEEK),
-                InsightChip($$"You have $35 ready if you want Friday night pizza.", RecencyWindow.THIS_PAY_CYCLE),
-                InsightChip("Your utility bills came in $140 lower this quarter. Want to see why?", RecencyWindow.THIS_QUARTER, isSerendipity = true)
+                InsightChip(
+                    text = "Nice work on your cafe spending this week. You have room for a cheeky brunch!",
+                    recency = RecencyWindow.THIS_WEEK,
+                    drilldownPrompt = "How much did I spend on cafes this week?"
+                ),
+                InsightChip(
+                    text = $$"You have $35 ready if you want Friday night pizza.",
+                    recency = RecencyWindow.THIS_PAY_CYCLE,
+                    drilldownPrompt = "How much did I spend on takeaway this pay cycle?"
+                ),
+                InsightChip(
+                    text = "Your utility bills came in $140 lower this quarter. Want to see why?",
+                    recency = RecencyWindow.THIS_QUARTER,
+                    isSerendipity = true,
+                    drilldownPrompt = "Show my utility bills this quarter"
+                )
             )
         )
     }

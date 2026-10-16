@@ -20,7 +20,8 @@ enum class RecencyWindow(val label: String) {
 data class InsightChip(
     val text: String,
     val recency: RecencyWindow,
-    val isSerendipity: Boolean = false
+    val isSerendipity: Boolean = false,
+    @SerialName("drilldown_prompt") val drilldownPrompt: String? = null
 )
 
 @Serializable
