@@ -36,11 +36,16 @@ import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import com.google.firebase.ai.type.LatLng
+import com.google.firebase.ai.type.Schema
 import com.google.firebase.ai.type.TemplateTool
 import com.google.firebase.ai.type.TemplateToolConfig
 import com.google.firebase.ai.type.retrievalConfig
 import com.talktomyfinances.android.data.schema.StoreFinderResult
 import com.talktomyfinances.android.data.schema.StoreSchema
+import com.talktomyfinances.android.domain.DateWindowType
+import com.talktomyfinances.android.domain.DenominatorStrategy
+import com.talktomyfinances.android.domain.TargetMetric
+import com.talktomyfinances.android.domain.TemporalGrain
 
 interface AIChatDataSource {
     suspend fun parseFinancialIntent(
@@ -64,7 +69,11 @@ open class AIRemoteDataSource @Inject constructor(
     private val aiModel: FirebaseAI,
     private val remoteConfig: FirebaseRemoteConfig
 ) : AIChatDataSource {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
 
     private val hybridGenerativeModel = aiModel.generativeModel(
         modelName = remoteConfig.getString(HYBRID_CLOUD_MODEL_KEY),
@@ -253,36 +262,24 @@ open class AIRemoteDataSource @Inject constructor(
             modelName = modelName,
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
+                responseSchema = FINANCIAL_QUERY_SPEC_SCHEMA
             },
             systemInstruction = content {
                 text(
                     "You are an Intent Parser for financial queries in personal finance. " +
-                    "Map user queries into a JSON object matching this schema:\n" +
-                    "{\n" +
-                    "  \"target_metric\": \"PERIOD_AVERAGE\" | \"TOTAL_SUM\" | \"AVERAGE_TRANSACTION\" | \"TRANSACTION_COUNT\" | \"RUN_RATE\",\n" +
-                    "  \"included_merchants\": [string],\n" +
-                    "  \"excluded_merchants\": [string],\n" +
-                    "  \"included_categories\": [string],\n" +
-                    "  \"excluded_categories\": [string],\n" +
-                    "  \"date_window\": {\"type\": \"THIS_WEEK\" | \"LAST_WEEK\" | \"LAST_MONTH\" | \"LAST_30_DAYS\" | \"THIS_QUARTER\" | \"SIX_MONTHS\" | \"YTD\" | \"ALL_TIME\" | \"CUSTOM\", \"start\": string|null, \"end\": string|null},\n" +
-                    "  \"temporal_grain\": \"WEEK\" | \"PAY_CYCLE\" | \"MONTH\" | \"QUARTER\" | \"YEAR\",\n" +
-                    "  \"denominator_strategy\": \"ACTIVE_PERIODS_ONLY\" | \"ALL_CALENDAR_PERIODS\",\n" +
-                    "  \"exclude_pending\": true,\n" +
-                    "  \"exclude_internal_transfers\": true,\n" +
-                    "  \"is_out_of_spec\": false,\n" +
-                    "  \"out_of_spec_reason\": string|null\n" +
-                    "}\n" +
-                    "Rules:\n" +
-                    "- Output ONLY raw valid JSON. No markdown fences, no explanatory preamble or postscript.\n" +
+                    "Map user queries into a structured FinancialQuerySpec JSON object.\n" +
+                    "Semantic Mapping Rules:\n" +
                     "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
-                    "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
-                    "- date_window: set type when the query names a period ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
+                    "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', " +
+                    "or TRANSACTION_LIST when the user asks to see the individual transactions, charges, bills, or line items (e.g. 'let me see the transactions', 'what were those charges?', 'show me the bills').\n" +
+                    "- temporal_grain: default to 'MONTH' when not specified.\n" +
+                    "- date_window: set type when the query names a period ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
                     "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
                     formatMerchantClustersPrompt() + "\n" +
                     "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants (aggregates across all dining, including cafes and delivery).\n" +
-                    "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context.\n" +
-                    "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
-                    "set is_out_of_spec to true with a one-line out_of_spec_reason, and leave all other fields at their defaults."
+                    "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'the transactions', 'those charges', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context. When the user asks to see the transactions from the previous answer, inherit the previous calculation's included_categories, included_merchants, and date_window and set target_metric to TRANSACTION_LIST.\n" +
+                    "- If the query is NOT a verifiable calculation or transaction listing over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
+                    "set is_out_of_spec to true with a one-line out_of_spec_reason."
                 )
             }
         )
@@ -301,6 +298,7 @@ open class AIRemoteDataSource @Inject constructor(
                 if (previousReceipt.value != null) {
                     append("- Value: ${previousReceipt.value}\n")
                 }
+                appendReceiptBreakdown(previousReceipt)
             }
             appendRecentDialogueTurns(recentMessages)
             append("User Query: $prompt")
@@ -324,12 +322,13 @@ open class AIRemoteDataSource @Inject constructor(
             systemInstruction = content {
                 text(
                     "You are a reading-level quality judge for personal finance responses. " +
-                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
-                    "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
-                    "Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00). " +
-                    "If the input already adheres to plain English, return it unchanged. " +
-                    "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
-                    "Reply with the final text only."
+                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon.\n" +
+                    "Crucial Rules:\n" +
+                    "- NEVER alter, omit, or approximate dollar amounts or counts.\n" +
+                    "- Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00).\n" +
+                    "- State the answer directly in 1-2 active sentences.\n" +
+                    "- Do NOT append or include exclusion clauses or technical fine print (e.g. 'while ignoring pending transfers...', 'excluding internal transfers...', 'Counted:', 'Excluded:', 'Denominator:', date window codes) in the conversational response text. Technical audit fine print is presented separately in the UI audit receipt card.\n" +
+                    "- Reply with the final text only."
                 )
             }
         )
@@ -371,9 +370,9 @@ open class AIRemoteDataSource @Inject constructor(
                     "The user's primary goal is: $goalName. " +
                     "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
                     "Use Australian financial context ($ AUD, fortnightly pay cycles, local retail terms). " +
-                    "CRITICAL: Do NOT attempt unverified mental arithmetic or fabricate transaction figures. " +
-                    "Never output raw classifier/system diagnostic messages (such as 'Query is an open-ended request' or 'is_out_of_spec'). " +
-                    "If the user asks for financial tips or habit advice, offer empathetic guidance. If they want exact numbers, guide them on what spending question to ask."
+                    "Ground your advice in the verified breakdown and transactions provided in the context.\n" +
+                    "Do NOT:\n" +
+                    formatGuidanceDoNotRulesPrompt()
                 )
             }
         )
@@ -384,6 +383,13 @@ open class AIRemoteDataSource @Inject constructor(
                 append("- Summary: ${CurrencySanitizer.sanitize(previousReceipt.summary)}\n")
                 if (previousReceipt.value != null) {
                     append("- Verified amount: $${String.format(java.util.Locale.US, "%.2f", previousReceipt.value)}\n")
+                }
+                appendReceiptBreakdown(previousReceipt)
+                if (previousReceipt.transactions.isNotEmpty()) {
+                    val txLines = previousReceipt.transactions.take(10).joinToString("; ") {
+                        "${it.date} ${it.merchant} $${String.format(java.util.Locale.US, "%.2f", it.amount)}"
+                    }
+                    append("- Matched transactions: $txLines\n")
                 }
             }
             appendRecentDialogueTurns(recentMessages)
@@ -398,6 +404,15 @@ open class AIRemoteDataSource @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Conversational guidance failed: ${e.message}", e)
             "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
+        }
+    }
+
+    private fun StringBuilder.appendReceiptBreakdown(receipt: AuditReceipt) {
+        if (receipt.breakdown.isNotEmpty()) {
+            val breakdownDesc = receipt.breakdown.joinToString("; ") {
+                "${it.category}: $${String.format(java.util.Locale.US, "%.2f", it.amount)} (${it.percentage}%)"
+            }
+            append("- Breakdown: $breakdownDesc\n")
         }
     }
 
@@ -458,6 +473,91 @@ open class AIRemoteDataSource @Inject constructor(
             "takeout, takeaway, or delivery" to TAKEAWAY_MERCHANTS,
             "petrol or fuel" to FUEL_MERCHANTS
         )
+
+        val SUBCATEGORY_CLUSTER_TITLES = mapOf(
+            CAFE_MERCHANTS.toSet() to "Cafes",
+            TAKEAWAY_MERCHANTS.toSet() to "Takeaway",
+            FUEL_MERCHANTS.toSet() to "Fuel"
+        )
+
+        fun resolveClusterTitle(merchants: List<String>): String? {
+            val normalizedSet = merchants.map { it.trim().uppercase() }.toSet()
+            return SUBCATEGORY_CLUSTER_TITLES[normalizedSet]
+        }
+
+        val TARGET_METRIC_VALUES: List<String> = TargetMetric.entries.map { it.name }
+        val DATE_WINDOW_TYPE_VALUES: List<String> = DateWindowType.entries.map { it.name }
+        val TEMPORAL_GRAIN_VALUES: List<String> = TemporalGrain.entries.map { it.name }
+        val DENOMINATOR_STRATEGY_VALUES: List<String> = DenominatorStrategy.entries.map { it.name }
+
+        val FINANCIAL_QUERY_SPEC_SCHEMA: Schema = Schema.obj(
+            properties = mapOf(
+                "target_metric" to Schema.enumeration(
+                    values = TARGET_METRIC_VALUES,
+                    description = "The primary financial calculation or transaction listing metric."
+                ),
+                "included_merchants" to Schema.array(
+                    items = Schema.string("Canonical merchant name to include."),
+                    description = "Merchants to include in the calculation."
+                ),
+                "excluded_merchants" to Schema.array(
+                    items = Schema.string("Canonical merchant name to exclude."),
+                    description = "Merchants to exclude from the calculation."
+                ),
+                "included_categories" to Schema.array(
+                    items = Schema.string("Category name to include."),
+                    description = "Categories to include in the calculation."
+                ),
+                "excluded_categories" to Schema.array(
+                    items = Schema.string("Category name to exclude."),
+                    description = "Categories to exclude from the calculation."
+                ),
+                "date_window" to Schema.obj(
+                    properties = mapOf(
+                        "type" to Schema.enumeration(
+                            values = DATE_WINDOW_TYPE_VALUES,
+                            description = "Temporal window preset or CUSTOM."
+                        ),
+                        "start" to Schema.string(
+                            description = "Start date YYYY-MM-DD for CUSTOM window.",
+                            nullable = true
+                        ),
+                        "end" to Schema.string(
+                            description = "End date YYYY-MM-DD for CUSTOM window.",
+                            nullable = true
+                        )
+                    ),
+                    optionalProperties = listOf("start", "end"),
+                    description = "Temporal window for the query."
+                ),
+                "temporal_grain" to Schema.enumeration(
+                    values = TEMPORAL_GRAIN_VALUES,
+                    description = "Period grain for averages or counts."
+                ),
+                "denominator_strategy" to Schema.enumeration(
+                    values = DENOMINATOR_STRATEGY_VALUES,
+                    description = "Whether to divide by active periods or all calendar periods."
+                ),
+                "exclude_pending" to Schema.boolean("Whether to exclude pending transactions."),
+                "exclude_internal_transfers" to Schema.boolean("Whether to exclude internal transfers."),
+                "is_out_of_spec" to Schema.boolean("True when the query asks for coaching/habits rather than a verifiable calculation or transaction listing."),
+                "out_of_spec_reason" to Schema.string(
+                    description = "One-line reason when is_out_of_spec is true.",
+                    nullable = true
+                )
+            ),
+            optionalProperties = listOf("out_of_spec_reason")
+        )
+
+        val GUIDANCE_DO_NOT_RULES = listOf(
+            "Attempt unverified mental arithmetic or fabricate transaction figures",
+            "Output raw classifier or system diagnostic strings (e.g. 'is_out_of_spec')",
+            "Refer the user to unimplemented screens or tabs outside this chat and the Insights Screen"
+        )
+
+        fun formatGuidanceDoNotRulesPrompt(): String {
+            return GUIDANCE_DO_NOT_RULES.joinToString("\n") { "  - $it" }
+        }
 
         fun formatMerchantClustersPrompt(): String {
             return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->

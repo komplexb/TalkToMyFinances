@@ -11,8 +11,16 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from auditor import config as auditor_config
 from auditor.config import CURATION_MODEL_NAME, PARSER_MODEL_NAME
-from auditor.models import AuditReceipt, AuditResponse, FinancialQuerySpec, InsightChip
+from auditor.models import (
+    AuditReceipt,
+    AuditResponse,
+    BreakdownItem,
+    FinancialQuerySpec,
+    InsightChip,
+    MatchedTransaction,
+)
 from auditor.prompt_templates import render_prompt
 
 # prompts/intent-parser-template-v1-0-0.prompt — the Intent Parser's system prompt
@@ -52,6 +60,16 @@ FACT_CATALOG = [
     {"id": 10, "text": "Entertainment spend is on track for the quarter.", "recency": "this_quarter", "category": "entertainment", "is_serendipity": False, "drilldown_prompt": "How much did I spend on entertainment this quarter?"},
 ]
 
+GOLDEN_MINDFUL_SPENDING_CHIPS = [
+    InsightChip(
+        text=item["text"],
+        recency=item["recency"],
+        isSerendipity=item["is_serendipity"],
+        drilldown_prompt=item["drilldown_prompt"],
+    )
+    for item in FACT_CATALOG[:3]
+]
+
 def get_genai_client():
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
@@ -65,6 +83,9 @@ def get_genai_client():
 @app.post("/audit", response_model=AuditResponse)
 def run_audit(req: AuditRequest) -> AuditResponse:
     """Runs Curation Agent over the Fact Catalog to pick 3 relevant chips (2 goal + 1 serendipity)."""
+    if auditor_config.ENABLE_GOLDEN_DEMO_CHIPS and (req.goal or "").strip().upper() == "MINDFUL_SPENDING":
+        return AuditResponse(chips=GOLDEN_MINDFUL_SPENDING_CHIPS)
+
     client = get_genai_client()
     if not client:
         raise HTTPException(
@@ -330,6 +351,48 @@ def execute_spec_compute(
     grain = spec.temporal_grain
     label = GRAIN_LABEL[grain]
 
+    # Hierarchical breakdown grouping:
+    # Single-category or merchant-cluster queries group by canonical merchant;
+    # Multi-category or unfiltered queries group by category.
+    group_by_merchant = len(spec.included_categories) == 1 or len(spec.included_merchants) > 0
+    group_sums: Dict[str, float] = {}
+    group_counts: Dict[str, int] = {}
+    for _, tx in filtered:
+        key = (
+            canonical_merchant(tx)
+            if group_by_merchant
+            else (str(tx.get("category", "")).strip() or "Uncategorized")
+        )
+        amt = abs(float(tx.get("amount", 0)))
+        group_sums[key] = group_sums.get(key, 0.0) + amt
+        group_counts[key] = group_counts.get(key, 0) + 1
+
+    breakdown: List[BreakdownItem] = [
+        BreakdownItem(
+            category=k,
+            amount=round(amt, 2),
+            percentage=round((amt / total) * 100.0, 1) if total > 0 else 0.0,
+            count=group_counts[k],
+        )
+        for k, amt in sorted(group_sums.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    # Matched transactions sorted newest-first, capped at 25 rows
+    sorted_filtered = sorted(
+        filtered,
+        key=lambda pair: (pair[0], canonical_merchant(pair[1])),
+        reverse=True,
+    )
+    matched_txs: List[MatchedTransaction] = [
+        MatchedTransaction(
+            date=str(d),
+            merchant=canonical_merchant(tx),
+            category=str(tx.get("category", "")).strip() or "Uncategorized",
+            amount=round(abs(float(tx.get("amount", 0))), 2),
+        )
+        for d, tx in sorted_filtered[:25]
+    ]
+
     active = len({_bucket_key(d, grain, anchor, pay_frequency, next_pay_date) for d, _ in filtered})
     if spec.denominator_strategy == "ACTIVE_PERIODS_ONLY":
         denom = max(active, 1)
@@ -351,6 +414,9 @@ def execute_spec_compute(
     elif spec.target_metric == "PERIOD_AVERAGE":
         val = per
         core = f"you averaged ${per:,.2f} per {label} (${total:,.2f} total)"
+    elif spec.target_metric == "TRANSACTION_LIST":
+        val = total
+        core = f"here {'is' if count == 1 else 'are'} the {count} transaction{'s' if count != 1 else ''} totaling ${total:,.2f}"
     else:  # RUN_RATE
         val = per * PERIODS_PER_YEAR[grain]
         core = f"your run rate is ${val:,.2f} per year (${per:,.2f} per {label})"
@@ -390,11 +456,31 @@ def execute_spec_compute(
         )
 
     window_desc = f"{win_start} to {win_end} ({spec.date_window.type})"
-    summary = (
-        f"{core.capitalize()}. Window: {window_desc}. "
-        f"Denominator: {denom_desc} ({spec.denominator_strategy}). "
-        f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
-    )
+    if spec.target_metric == "TRANSACTION_LIST":
+        if matched_txs:
+            lines = "\n".join(
+                f"• {tx.date}: {tx.merchant} — ${tx.amount:,.2f}" for tx in matched_txs
+            )
+            truncation_note = (
+                f"\n(Showing the 25 most recent of {count} transactions.)"
+                if count > len(matched_txs)
+                else ""
+            )
+            summary = (
+                f"{core.capitalize()} ({window_desc}):\n{lines}{truncation_note}\n"
+                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+            )
+        else:
+            summary = (
+                f"No matching transactions found ({window_desc}). "
+                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+            )
+    else:
+        summary = (
+            f"{core.capitalize()}. Window: {window_desc}. "
+            f"Denominator: {denom_desc} ({spec.denominator_strategy}). "
+            f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+        )
 
     return AuditReceipt(
         summary=summary,
@@ -405,6 +491,8 @@ def execute_spec_compute(
         matched_excluded_merchants=excl_merchants,
         matched_categories=inc_categories,
         unmatched_terms=unmatched_terms,
+        breakdown=breakdown,
+        transactions=matched_txs,
         spec=spec,
     )
 

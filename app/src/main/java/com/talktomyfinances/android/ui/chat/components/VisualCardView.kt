@@ -72,9 +72,9 @@ fun VisualCardView(
             .animateContentSize(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier
@@ -84,17 +84,18 @@ fun VisualCardView(
             // Header: Icon, Type Badge, Title, and Total Amount
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .padding(top = 2.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
@@ -107,9 +108,11 @@ fun VisualCardView(
                         )
                     }
 
-                    Column {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(6.dp),
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                         ) {
                             Text(
@@ -117,7 +120,7 @@ fun VisualCardView(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
 
@@ -131,7 +134,10 @@ fun VisualCardView(
                 }
 
                 visualCard.totalAmount?.let { total ->
-                    Column(horizontalAlignment = Alignment.End) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         Text(
                             text = String.format("$%.2f", total),
                             style = MaterialTheme.typography.titleLarge,
@@ -141,7 +147,7 @@ fun VisualCardView(
                         visualCard.timeframe?.let { tf ->
                             Text(
                                 text = tf,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -149,14 +155,15 @@ fun VisualCardView(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Breakdown Items
             if (visualCard.items.isNotEmpty()) {
                 Text(
                     text = if (selectedCategoryIndex != null) "Tapped category selected" else "Breakdown items",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -288,3 +295,26 @@ private fun VisualCardItemRow(
         }
     }
 }
+
+@androidx.compose.ui.tooling.preview.Preview(showBackground = true)
+@Composable
+private fun VisualCardViewPreview() {
+    com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme {
+        Box(modifier = Modifier.padding(16.dp)) {
+            VisualCardView(
+                visualCard = VisualCardPayload(
+                    cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                    title = "Dining",
+                    totalAmount = 1312.29,
+                    timeframe = "ALL_TIME",
+                    items = listOf(
+                        VisualCardItemData("DOORDASH", 566.18, 43.1),
+                        VisualCardItemData("ALDI DELIVERY", 452.81, 34.5),
+                        VisualCardItemData("UBER *EATS", 293.30, 22.4)
+                    )
+                )
+            )
+        }
+    }
+}
+

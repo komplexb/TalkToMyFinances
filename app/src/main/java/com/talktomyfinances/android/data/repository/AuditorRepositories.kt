@@ -17,6 +17,8 @@ class CloudRunAuditorRepository @Inject constructor(
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+        isLenient = true
+        coerceInputValues = true
     }
 
     override suspend fun compute(spec: FinancialQuerySpec): Result<AuditReceipt> =

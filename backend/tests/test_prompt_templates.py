@@ -50,6 +50,13 @@ def test_render_prompt_missing_file_raises():
 def test_load_prompt_returns_frontmatter_and_body():
     metadata, body = load_prompt("intent-parser-template-v1-0-0")
     assert metadata["model"] == "gemini-3.5-flash-lite"
+    assert "output" in metadata
+    assert "TRANSACTION_LIST" in metadata["output"]["schema"]["target_metric"]
+    assert "THIS_WEEK" in metadata["output"]["schema"]["date_window"]
+    assert "LAST_WEEK" in metadata["output"]["schema"]["date_window"]
+    assert "TRANSACTION_LIST" in body
+    assert "THIS_WEEK" in body
+    assert "LAST_WEEK" in body
     assert "{{query}}" in body
     assert "---" not in body
 
@@ -60,3 +67,4 @@ def test_load_prompt_without_frontmatter(monkeypatch, tmp_path):
     metadata, body = load_prompt("plain")
     assert metadata == {}
     assert body == "Hello {{name}}"
+

@@ -78,9 +78,9 @@ Set the production backend URL, model configurations, and voice parameters in th
 
 1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
 2. Configure parameters:
-   - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves the `/insights` feed.
-   - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves Track A verifiable calculations (`/compute` and `/query`). Track B conversational guidance executes client-side via Firebase AI Logic.
-   - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).
+   - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves the `/audit` endpoint for the Insights Screen (including the 3 verified Golden Demo Chips for `MINDFUL_SPENDING`).
+   - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves Track A verifiable calculations and transaction line-item drill-downs (`/compute` and `/query`, returning `AuditReceipt.breakdown` and `AuditReceipt.transactions`). Track B conversational guidance executes client-side via Firebase AI Logic.
+   - `chat_ai_model`: `gemini-3.8-flash` (intent parser model using declarative `generationConfig.responseSchema` constrained decoding for `FinancialQuerySpec`, including `TRANSACTION_LIST`, `THIS_WEEK`, and `LAST_WEEK`).
    - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
    - `live_model_name`: `gemini-3.1-flash-live-preview` (Gemini Live voice streaming model).
    - `live_model_voice`: `Puck` (overridable in console with any Gemini studio voice, e.g., `Aoede`, `Charon`, `Fenrir`, `Kore`).

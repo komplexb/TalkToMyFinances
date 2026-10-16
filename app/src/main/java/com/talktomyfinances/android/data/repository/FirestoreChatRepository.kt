@@ -18,7 +18,11 @@ class FirestoreChatRepository @Inject constructor(
     private val firestore: FirebaseFirestore
 ) : ChatRepository {
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
 
     override fun getMessages(userId: String): Flow<List<ChatMessage>> {
         return firestore.collection("users")
