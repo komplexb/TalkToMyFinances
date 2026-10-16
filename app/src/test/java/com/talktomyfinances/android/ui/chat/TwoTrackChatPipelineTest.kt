@@ -189,6 +189,32 @@ class TwoTrackChatPipelineTest {
     }
 
     @Test
+    fun stubInsightsRepository_providesThreeGoldenChipsWithDrilldowns() = runBlocking {
+        val repo = com.talktomyfinances.android.data.repository.StubInsightsRepository()
+        val result = repo.loadInsights(
+            OnboardingProfile(
+                goal = FinancialGoal.MINDFUL_SPENDING,
+                payCycle = PayCycle(PayFrequency.FORTNIGHTLY, "2026-10-20")
+            )
+        )
+        assertEquals(3, result.chips.size)
+        val (chip1, chip2, chip3) = result.chips
+
+        assertEquals(RecencyWindow.THIS_WEEK, chip1.recency)
+        assertEquals("How much did I spend on cafes this week?", chip1.drilldownPrompt)
+        assertTrue(chip1.text.contains("cafes"))
+
+        assertEquals(RecencyWindow.THIS_PAY_CYCLE, chip2.recency)
+        assertEquals("How much did I spend on takeaway this pay cycle?", chip2.drilldownPrompt)
+        assertTrue(chip2.text.contains("takeaway"))
+
+        assertEquals(RecencyWindow.THIS_QUARTER, chip3.recency)
+        assertTrue(chip3.isSerendipity)
+        assertEquals("How much did I spend on utility bills this quarter?", chip3.drilldownPrompt)
+        assertTrue(chip3.text.contains("utility"))
+    }
+
+    @Test
     fun trackA_executesDeterministicMathAndAttachesAuditReceipt() = runBlocking {
         val chatRepo = FakeChatRepository()
         val authRepo = FakeAuthRepository()

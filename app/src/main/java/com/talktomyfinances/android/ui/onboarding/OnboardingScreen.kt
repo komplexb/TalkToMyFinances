@@ -91,9 +91,11 @@ fun OnboardingContent(
             OnboardingStep.GOAL -> {
                 Text(stringResource(R.string.onboarding_goal_title), style = MaterialTheme.typography.headlineSmall)
                 FinancialGoal.entries.forEach { goal ->
-                    RadioRow(goal.label, state.selectedGoal == goal, Modifier.testTag("goal_${goal.name}")) { onGoal(goal) }
+                    val isDemo = goal == FinancialGoal.MINDFUL_SPENDING
+                    val label = if (isDemo) "${goal.label} (Recommended Demo)" else "${goal.label} (Preview)"
+                    RadioRow(label, state.selectedGoal == goal, Modifier.testTag("goal_${goal.name}")) { onGoal(goal) }
                 }
-                RadioRow(stringResource(R.string.onboarding_goal_other), state.otherSelected, Modifier.testTag("goal_OTHER"), onOther)
+                RadioRow("${stringResource(R.string.onboarding_goal_other)} (Preview)", state.otherSelected, Modifier.testTag("goal_OTHER"), onOther)
                 if (state.otherSelected) {
                     OutlinedTextField(
                         value = state.otherText,
