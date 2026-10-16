@@ -278,9 +278,7 @@ open class AIRemoteDataSource @Inject constructor(
                     "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for'.\n" +
                     "- date_window: set type when the query names a period ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
                     "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
-                    "  * Queries for 'cafes' or 'coffee' -> map to included_merchants: [\"SQ *CAFE NEWTOWN\", \"CORNER CAFE\", \"BLUEBONIC COFFEE CO\"] and empty included_categories.\n" +
-                    "  * Queries for 'takeout', 'takeaway', or 'delivery' -> map to included_merchants: [\"UBER *EATS\", \"DOORDASH\", \"ALDI DELIVERY\"] and empty included_categories.\n" +
-                    "  * Queries for 'petrol' or 'fuel' -> map to included_merchants: [\"BP FUEL\", \"SHELL FUEL\"] and empty included_categories.\n" +
+                    formatMerchantClustersPrompt() + "\n" +
                     "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants (aggregates across all dining, including cafes and delivery).\n" +
                     "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context.\n" +
                     "- If the query is NOT a verifiable calculation over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
@@ -449,5 +447,23 @@ open class AIRemoteDataSource @Inject constructor(
 
         //Class TAG
         private const val TAG = "AIRemoteDataSource"
+
+        // Extensible merchant-level subcategory clusters
+        val CAFE_MERCHANTS = listOf("SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO")
+        val TAKEAWAY_MERCHANTS = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY")
+        val FUEL_MERCHANTS = listOf("BP FUEL", "SHELL FUEL")
+
+        val SUBCATEGORY_MERCHANT_CLUSTERS = mapOf(
+            "cafes or coffee" to CAFE_MERCHANTS,
+            "takeout, takeaway, or delivery" to TAKEAWAY_MERCHANTS,
+            "petrol or fuel" to FUEL_MERCHANTS
+        )
+
+        fun formatMerchantClustersPrompt(): String {
+            return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->
+                val listLiteral = merchants.joinToString(separator = "\", \"", prefix = "[\"", postfix = "\"]")
+                "  * Queries for '$queryTerms' -> map to included_merchants: $listLiteral and empty included_categories."
+            }
+        }
     }
 }
