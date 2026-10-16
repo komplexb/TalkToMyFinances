@@ -246,9 +246,25 @@ class ChatViewModel @Inject constructor(
             liveVoiceManager.visualCardEvents.collect { payload ->
                 val uid = getOrEnsureUserId() ?: return@collect
 
-                val title = payload.title.ifBlank { "spending breakdown" }
-                val timeframeSuffix = if (!payload.timeframe.isNullOrBlank()) " for ${payload.timeframe}" else ""
-                val summaryText = "Here is the $title$timeframeSuffix."
+                val title = payload.title.ifBlank { "Spending breakdown" }
+                val timeframeDesc = when (payload.timeframe?.trim()?.uppercase()) {
+                    "THIS_WEEK" -> "this week"
+                    "LAST_WEEK" -> "last week"
+                    "THIS_PAY_CYCLE" -> "this pay cycle"
+                    "LAST_30_DAYS" -> "over the last 30 days"
+                    "THIS_QUARTER" -> "this quarter"
+                    "SIX_MONTHS" -> "over the past 6 months"
+                    "YTD" -> "so far this year"
+                    null, "" -> null
+                    else -> payload.timeframe
+                }
+
+                val summaryText = when {
+                    timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true) ->
+                        "Here is your $title $timeframeDesc."
+                    else ->
+                        "Here is your $title."
+                }
 
                 val chatMsg = ChatMessage(
                     sender = MessageSender.ASSISTANT,
