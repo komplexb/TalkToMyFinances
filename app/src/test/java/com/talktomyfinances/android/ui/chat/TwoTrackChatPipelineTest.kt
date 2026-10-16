@@ -333,4 +333,47 @@ class TwoTrackChatPipelineTest {
             CurrencySanitizer.sanitize("Your spending was $253.50 on dining.")
         )
     }
+
+    @Test
+    fun weeklyWindowsSerialization_supportsThisWeekAndLastWeek() {
+        val thisWeekJson = """{"type":"THIS_WEEK"}"""
+        val thisWeekWindow = json.decodeFromString<DateWindow>(thisWeekJson)
+        assertEquals(DateWindowType.THIS_WEEK, thisWeekWindow.type)
+        assertEquals("""{"type":"THIS_WEEK"}""", json.encodeToString(DateWindow.serializer(), thisWeekWindow))
+
+        val lastWeekJson = """{"type":"LAST_WEEK"}"""
+        val lastWeekWindow = json.decodeFromString<DateWindow>(lastWeekJson)
+        assertEquals(DateWindowType.LAST_WEEK, lastWeekWindow.type)
+        assertEquals("""{"type":"LAST_WEEK"}""", json.encodeToString(DateWindow.serializer(), lastWeekWindow))
+    }
+
+    @Test
+    fun merchantBundleAndCategorySpec_parsesCorrectly() {
+        val cafeQueryJson = """
+            {
+                "target_metric": "TOTAL_SUM",
+                "included_merchants": ["SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"],
+                "included_categories": [],
+                "date_window": {"type": "THIS_WEEK"}
+            }
+        """.trimIndent()
+        val cafeSpec = json.decodeFromString<FinancialQuerySpec>(cafeQueryJson)
+        assertEquals(3, cafeSpec.includedMerchants.size)
+        assertTrue(cafeSpec.includedMerchants.contains("SQ *CAFE NEWTOWN"))
+        assertTrue(cafeSpec.includedCategories.isEmpty())
+        assertEquals(DateWindowType.THIS_WEEK, cafeSpec.dateWindow.type)
+
+        val diningQueryJson = """
+            {
+                "target_metric": "TOTAL_SUM",
+                "included_merchants": [],
+                "included_categories": ["Dining"],
+                "date_window": {"type": "LAST_WEEK"}
+            }
+        """.trimIndent()
+        val diningSpec = json.decodeFromString<FinancialQuerySpec>(diningQueryJson)
+        assertTrue(diningSpec.includedMerchants.isEmpty())
+        assertEquals(listOf("Dining"), diningSpec.includedCategories)
+        assertEquals(DateWindowType.LAST_WEEK, diningSpec.dateWindow.type)
+    }
 }

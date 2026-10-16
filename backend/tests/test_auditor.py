@@ -108,6 +108,65 @@ def test_date_window_ytd_filters_out_older():
     assert r.value == 50.0  # Dec 2025 tx excluded
 
 
+def test_date_window_this_week_and_last_week():
+    # Anchor is Wednesday 2026-10-14:
+    # THIS_WEEK = Monday 2026-10-12 to 2026-10-14
+    # LAST_WEEK = Monday 2026-10-05 to Sunday 2026-10-11
+    txs = [
+        T("2026-10-13", "SQ *CAFE NEWTOWN", -15.50),  # Tuesday this week
+        T("2026-10-08", "SQ *CAFE NEWTOWN", -22.00),  # Thursday last week
+        T("2026-09-28", "SQ *CAFE NEWTOWN", -50.00),  # Older week
+        T("2026-10-14", "ANCHOR", 0.0),               # Anchor date
+    ]
+
+    r_this_week = execute_spec_compute(
+        spec(target_metric="TOTAL_SUM", date_window=DateWindow(type="THIS_WEEK"), included_merchants=["SQ *CAFE NEWTOWN"]),
+        txs
+    )
+    assert r_this_week.value == 15.50
+    assert "2026-10-12 to 2026-10-14" in r_this_week.summary
+
+    r_last_week = execute_spec_compute(
+        spec(target_metric="TOTAL_SUM", date_window=DateWindow(type="LAST_WEEK"), included_merchants=["SQ *CAFE NEWTOWN"]),
+        txs
+    )
+    assert r_last_week.value == 22.00
+    assert "2026-10-05 to 2026-10-11" in r_last_week.summary
+
+
+def test_merchant_bundle_cafes_and_broad_dining_aggregation():
+    cafe_bundle = ["SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"]
+    takeaway_bundle = ["UBER *EATS", "DOORDASH", "ALDI DELIVERY"]
+
+    txs = [
+        T("2026-10-01", "SQ *CAFE NEWTOWN", -12.00, cat="Dining"),
+        T("2026-10-02", "CORNER CAFE", -8.00, cat="Dining"),
+        T("2026-10-03", "UBER *EATS", -35.00, cat="Dining"),
+        T("2026-10-04", "BP FUEL", -70.00, cat="Transport"),
+    ]
+
+    # Colloquial cafe sub-cluster query
+    r_cafes = execute_spec_compute(
+        spec(target_metric="TOTAL_SUM", included_merchants=cafe_bundle),
+        txs
+    )
+    assert r_cafes.value == 20.00
+
+    # Colloquial takeaway sub-cluster query
+    r_takeaway = execute_spec_compute(
+        spec(target_metric="TOTAL_SUM", included_merchants=takeaway_bundle),
+        txs
+    )
+    assert r_takeaway.value == 35.00
+
+    # Broad dining query aggregates across both cafes and takeaway
+    r_dining = execute_spec_compute(
+        spec(target_metric="TOTAL_SUM", included_categories=["Dining"], included_merchants=[]),
+        txs
+    )
+    assert r_dining.value == 55.00
+
+
 def test_pay_cycle_bucketing_aligns_to_pay_date():
     # Fortnightly cycles anchored at next_pay_date 2026-01-10:
     # Jan 1 -> C-1, Jan 10 -> C0, Jan 24 -> C1  => 3 active cycles
