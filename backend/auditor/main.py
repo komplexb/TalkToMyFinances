@@ -40,9 +40,9 @@ class QueryRequest(BaseModel):
 
 # Hardcoded 10-Fact Deterministic Anomaly Catalog for Prototype (PRD 5.2)
 FACT_CATALOG = [
-    {"id": 1, "text": "Nice work on your cafe spending this week. You have room for a cheeky brunch!", "recency": "this_week", "category": "dining", "is_serendipity": False, "drilldown_prompt": "How much did I spend on cafes this week?"},
-    {"id": 2, "text": "You have $35 ready if you want Friday night pizza.", "recency": "this_pay_cycle", "category": "dining", "is_serendipity": False, "drilldown_prompt": "How much did I spend on takeaway this pay cycle?"},
-    {"id": 3, "text": "Your utility bills came in $140 lower this quarter. Want to see why?", "recency": "this_quarter", "category": "utilities", "is_serendipity": True, "drilldown_prompt": "Show my utility bills this quarter"},
+    {"id": 1, "text": "You're tracking at $9.50 on cafes this week — down from your $23.06 weekly average.", "recency": "this_week", "category": "dining", "is_serendipity": False, "drilldown_prompt": "How much did I spend on cafes this week?"},
+    {"id": 2, "text": "Zero takeaway spend since Tuesday — you've got over $2,600 ready in your cycle buffer.", "recency": "this_pay_cycle", "category": "dining", "is_serendipity": False, "drilldown_prompt": "How much did I spend on takeaway this pay cycle?"},
+    {"id": 3, "text": "Your utility bills came in $140 lower this quarter ($105.83 vs $245.82). Want to see why?", "recency": "this_quarter", "category": "utilities", "is_serendipity": True, "drilldown_prompt": "How much did I spend on utility bills this quarter?"},
     {"id": 4, "text": "Groceries were 12% lower over the last 30 days.", "recency": "last_30_days", "category": "groceries", "is_serendipity": False, "drilldown_prompt": "How much did I spend on groceries in the last 30 days?"},
     {"id": 5, "text": "Subscription costs increased by $15/mo over 6 months.", "recency": "six_months", "category": "subscriptions", "is_serendipity": False, "drilldown_prompt": "How much did I spend on subscriptions over the last 6 months?"},
     {"id": 6, "text": "Net savings buffer grew 8% YTD.", "recency": "ytd", "category": "savings", "is_serendipity": False, "drilldown_prompt": "What is my net savings buffer so far this year?"},

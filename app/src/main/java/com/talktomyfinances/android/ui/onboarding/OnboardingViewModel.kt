@@ -44,7 +44,12 @@ class OnboardingViewModel @Inject constructor(
     private val profileStore: ProfileStore,
     private val authRepository: AuthRepository
 ) : MainViewModel() {
-    private val _state = MutableStateFlow(OnboardingState())
+    private val _state = MutableStateFlow(
+        OnboardingState(
+            selectedGoal = FinancialGoal.MINDFUL_SPENDING,
+            nextPayDate = "2026-10-20"
+        )
+    )
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     fun selectGoal(goal: FinancialGoal) = _state.update { it.copy(selectedGoal = goal, otherSelected = false) }
