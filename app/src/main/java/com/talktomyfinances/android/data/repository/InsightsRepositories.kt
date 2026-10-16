@@ -28,20 +28,20 @@ open class StubInsightsRepository @Inject constructor() : InsightsRepository {
         return InsightsResult(
             listOf(
                 InsightChip(
-                    text = "Nice work on your cafe spending this week. You have room for a cheeky brunch!",
+                    text = "You're tracking at $9.50 on cafes this week — down from your $23.06 weekly average.",
                     recency = RecencyWindow.THIS_WEEK,
                     drilldownPrompt = "How much did I spend on cafes this week?"
                 ),
                 InsightChip(
-                    text = $$"You have $35 ready if you want Friday night pizza.",
+                    text = "Zero takeaway spend since Tuesday — you've got over $2,600 ready in your cycle buffer.",
                     recency = RecencyWindow.THIS_PAY_CYCLE,
                     drilldownPrompt = "How much did I spend on takeaway this pay cycle?"
                 ),
                 InsightChip(
-                    text = "Your utility bills came in $140 lower this quarter. Want to see why?",
+                    text = "Your utility bills came in $140 lower this quarter ($105.83 vs $245.82). Want to see why?",
                     recency = RecencyWindow.THIS_QUARTER,
                     isSerendipity = true,
-                    drilldownPrompt = "Show my utility bills this quarter"
+                    drilldownPrompt = "How much did I spend on utility bills this quarter?"
                 )
             )
         )
