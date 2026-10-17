@@ -327,6 +327,7 @@ open class AIRemoteDataSource @Inject constructor(
             history.add(content(role) { text(msg.text) })
         }
 
+        Log.d(TAG, "Sending prompt to Gemini: '$prompt'")
         val chat = model.startChat(history)
         
         var response = try {
@@ -342,13 +343,16 @@ open class AIRemoteDataSource @Inject constructor(
 
         val functionCall = response.functionCalls.firstOrNull { it.name == "query_ledger" }
         if (functionCall != null) {
+            Log.d(TAG, "Gemini requested tool 'query_ledger' with args: ${functionCall.args}")
             try {
                 val argsJsonObj = JsonObject(functionCall.args)
                 val spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
 
+                Log.d(TAG, "Evaluating FinancialQuerySpec via AuditorRepository: $spec")
                 val auditResult = auditorRepository.compute(spec)
                 val rawReceipt = auditResult.getOrThrow()
                 finalReceipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
+                Log.d(TAG, "Auditor computed result: value=${finalReceipt.value}, breakdownSize=${finalReceipt.breakdown.size}")
 
                 if (finalReceipt.value != null && spec.targetMetric != TargetMetric.TRANSACTION_LIST && finalReceipt.breakdown.size > 1) {
                     val distinctTxCategories = finalReceipt.transactions
@@ -398,14 +402,18 @@ open class AIRemoteDataSource @Inject constructor(
                     ))
                 }
 
+                Log.d(TAG, "Submitting tool response back to Gemini for final prose synthesis...")
                 val secondResponse = chat.sendMessage(content("user") {
                     part(FunctionResponsePart(functionCall.name, receiptJson))
                 })
                 finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() } ?: finalReceipt.summary
+                Log.d(TAG, "Gemini final prose synthesis complete: '$finalProse'")
             } catch (e: Exception) {
                 Log.e(TAG, "Tool execution failed: ${e.message}", e)
                 finalProse = "I ran into an issue calculating that."
             }
+        } else {
+            Log.d(TAG, "No tool call requested; returning Gemini conversational guidance directly.")
         }
 
         return ChatResponseResult(
