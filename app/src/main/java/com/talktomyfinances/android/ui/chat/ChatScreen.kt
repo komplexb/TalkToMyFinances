@@ -21,10 +21,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.styleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -75,6 +79,7 @@ import androidx.core.content.ContextCompat
 import com.talktomyfinances.android.domain.VoiceSessionStatus
 import com.talktomyfinances.android.domain.VoiceState
 import com.talktomyfinances.android.ui.chat.components.VoiceWaveformBar
+import com.talktomyfinances.android.ui.onboarding.OnboardingDialog
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -89,6 +94,7 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    var showOnboardingDialog by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -108,6 +114,12 @@ fun ChatScreen(
         }
     }
 
+    if (showOnboardingDialog) {
+        OnboardingDialog(
+            onDismiss = { showOnboardingDialog = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -117,6 +129,15 @@ fun ChatScreen(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+                },
+                actions = {
+                    IconButton(onClick = { showOnboardingDialog = true }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_settings),
+                            contentDescription = "Reset Pay Cycle & Goal Settings",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -224,7 +245,9 @@ fun ChatMessageItem(message: ChatMessage) {
             }
             Spacer(modifier = Modifier.height(8.dp))
             VisualCardView(visualCard = cardWithReceipt)
-        } ?: message.auditReceipt?.let { receipt ->
+        }
+
+        message.auditReceipt?.let { receipt ->
             Spacer(modifier = Modifier.height(6.dp))
             AuditReceiptCard(receipt = receipt)
         }
@@ -232,59 +255,105 @@ fun ChatMessageItem(message: ChatMessage) {
 }
 
 @Composable
-fun AuditReceiptCard(receipt: AuditReceipt) {
-    Card(
-        modifier = Modifier
+fun AuditReceiptCard(
+    receipt: AuditReceipt,
+    modifier: Modifier = Modifier,
+    style: Style = Style
+) {
+    val template = remember(receipt) { receipt.toReceiptTemplate() }
+    val cardStyleState = remember { MutableStyleState(null) }
+    val badgeStyleState = remember { MutableStyleState(null) }
+    val pillStyleState = remember { MutableStyleState(null) }
+    val cardContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+    val badgeColor = MaterialTheme.colorScheme.primary
+    val pillColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+
+    Column(
+        modifier = modifier
             .fillMaxWidth(0.92f)
-            .padding(top = 4.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-        )
+            .styleable(
+                cardStyleState,
+                TalkToMyFinancesTheme.styles.auditReceiptCardStyle,
+                Style { background(cardContainerColor) },
+                style
+            ),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier.styleable(
+                    badgeStyleState,
+                    TalkToMyFinancesTheme.styles.auditReceiptBadgeIconStyle,
+                    Style { background(badgeColor) }
+                ),
+                contentAlignment = Alignment.Center
             ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_check),
+                    contentDescription = "Verified",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+            receipt.value?.let { value ->
                 Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.styleable(
+                        pillStyleState,
+                        TalkToMyFinancesTheme.styles.auditReceiptMetricPillStyle,
+                        Style { background(pillColor) }
+                    )
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_check),
-                        contentDescription = "Verified",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(12.dp)
+                    Text(
+                        text = "Verified Metric: $${String.format("%.2f", value)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
-                receipt.value?.let { value ->
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+            }
+        }
+
+        if (template.headline.isNotBlank()) {
+            Text(
+                text = template.headline,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+
+        if (template.bullets.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                template.bullets.forEach { bullet ->
+                    val bulletRowState = remember { MutableStyleState(null) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .styleable(
+                                bulletRowState,
+                                TalkToMyFinancesTheme.styles.auditReceiptBulletRowStyle
+                            ),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "Verified Metric: $${String.format("%.2f", value)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            text = "•",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = bullet,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = receipt.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
         }
     }
 }

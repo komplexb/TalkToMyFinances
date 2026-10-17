@@ -230,6 +230,8 @@ def resolve_window(
     anchor: date,
     ledger_min: date,
     ledger_max: date,
+    pay_frequency: str = "FORTNIGHTLY",
+    next_pay_date: Optional[str] = None,
 ) -> tuple[date, date]:
     w = spec.date_window
     if w.type == "CUSTOM" and w.start:
@@ -239,6 +241,24 @@ def resolve_window(
         # ISO Monday through as-of date (anchor)
         start = anchor - timedelta(days=anchor.weekday())
         end = anchor
+    elif w.type == "THIS_PAY_CYCLE":
+        # Current pay cycle window (14 days for FORTNIGHTLY, 7 for WEEKLY).
+        # If next_pay_date is provided and falls within a valid cycle covering or near the ledger,
+        # compute the cycle window; otherwise anchor the 14-day window ending on `anchor`.
+        cycle_days = _resolve_pay_cycle_days(pay_frequency)
+        if next_pay_date:
+            try:
+                npd = _parse_date(next_pay_date)
+                cand_start = npd - timedelta(days=cycle_days)
+                cand_end = npd - timedelta(days=1)
+                if cand_start <= anchor:
+                    start, end = cand_start, min(cand_end, anchor)
+                else:
+                    start, end = anchor - timedelta(days=cycle_days - 1), anchor
+            except Exception:
+                start, end = anchor - timedelta(days=cycle_days - 1), anchor
+        else:
+            start, end = anchor - timedelta(days=cycle_days - 1), anchor
     elif w.type == "LAST_WEEK":
         # Prior full Monday through Sunday
         this_monday = anchor - timedelta(days=anchor.weekday())
@@ -305,7 +325,7 @@ def execute_spec_compute(
     ledger_max = max(d for d, _ in dated)
     anchor = ledger_max
 
-    win_start, win_end = resolve_window(spec, anchor, ledger_min, ledger_max)
+    win_start, win_end = resolve_window(spec, anchor, ledger_min, ledger_max, pay_frequency, next_pay_date)
 
     # Ground requested entities against the ledger's actual vocabulary (gap 4):
     # matches are resolved to canonical names and echoed in the receipt.
@@ -473,18 +493,22 @@ def execute_spec_compute(
             )
             summary = (
                 f"{core.capitalize()} ({window_desc}):\n{lines}{truncation_note}\n"
-                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+                f"• Counted: {'; '.join(counted_parts)}\n"
+                f"• Excluded: {'; '.join(exclusions)}"
             )
         else:
             summary = (
-                f"No matching transactions found ({window_desc}). "
-                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+                f"No matching transactions found ({window_desc}).\n"
+                f"• Counted: {'; '.join(counted_parts)}\n"
+                f"• Excluded: {'; '.join(exclusions)}"
             )
     else:
         summary = (
-            f"{core.capitalize()}. Window: {window_desc}. "
-            f"Denominator: {denom_desc} ({spec.denominator_strategy}). "
-            f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+            f"{core.capitalize()}.\n"
+            f"• Window: {window_desc}\n"
+            f"• Denominator: {denom_desc} ({spec.denominator_strategy})\n"
+            f"• Counted: {'; '.join(counted_parts)}\n"
+            f"• Excluded: {'; '.join(exclusions)}"
         )
 
     return AuditReceipt(

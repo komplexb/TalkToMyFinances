@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?><defaults>
     <entry>
+        <key>is_demo</key>
+        <value>true</value>
+    </entry>
+    <entry>
         <key>find_stores</key>
         <value>find-stores-template-v1-0-0</value>
     </entry>

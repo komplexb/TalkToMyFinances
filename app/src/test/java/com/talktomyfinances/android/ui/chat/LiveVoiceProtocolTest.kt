@@ -90,70 +90,15 @@ class LiveVoiceProtocolTest {
     }
 
     private class FakeAIRemoteDataSource : AIChatDataSource {
-        
-    override suspend fun sendMessage(
-        prompt: String,
-        recentMessages: List<ChatMessage>,
-        previousReceipt: AuditReceipt?,
-        userGoal: FinancialGoal?,
-        onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
-    ): com.talktomyfinances.android.domain.ChatResponseResult {
-        lastPassedPrompt = prompt
-        lastPassedReceipt = previousReceipt
-        lastPassedMessages = recentMessages
-        lastPassedGoal = userGoal
-        
-        if (specToReturn.isOutOfSpec) {
-            return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
-        }
-        
-        var receipt: AuditReceipt? = null
-        if (auditorRepo != null) {
-            receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
-        }
-        
-        var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
-        if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
-            val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
-            val title = when {
-                receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
-                distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
-                receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
-                else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
-            }
-            visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
-                cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
-                title = title,
-                totalAmount = receipt.value,
-                items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
-                auditReceipt = receipt,
-                timeframe = receipt.spec.dateWindow.type.name
-            )
-        }
-        
-        val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
-        
-        return com.talktomyfinances.android.domain.ChatResponseResult(
-            prose = prose,
-            auditReceipt = receipt,
-            visualCard = visualCard
-        )
-    }
-
-        fun parseFinancialIntent_old(
-            prompt: String,
-            previousReceipt: AuditReceipt?,
-            recentMessages: List<ChatMessage>
-        ): FinancialQuerySpec = FinancialQuerySpec(targetMetric = TargetMetric.TOTAL_SUM)
-
-        fun evaluateWithJudge_old(prose: String, verifiedAmount: Double?): String = prose
-
-        fun generateConversationalGuidance_old(
+        override suspend fun sendMessage(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: FinancialGoal?
-        ): String = "Guidance"
+            userProfile: OnboardingProfile?,
+            onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
+        ): com.talktomyfinances.android.domain.ChatResponseResult {
+            return com.talktomyfinances.android.domain.ChatResponseResult(prose = "Response")
+        }
     }
 
     private val canonicalLivePrompt: String by lazy {
@@ -189,7 +134,7 @@ class LiveVoiceProtocolTest {
     fun voiceAssistantAcousticPersonaReflectsAustralianRetailConventions() {
         val prompt = canonicalLivePrompt
 
-        // Grounded in Australian financial conventions
+        // Grounded in Australian financial context
         assertTrue(prompt.contains("Australian financial context"))
         assertTrue(prompt.contains("\$ AUD"))
         assertTrue(prompt.contains("fortnightly pay cycles"))
@@ -236,15 +181,13 @@ class LiveVoiceProtocolTest {
     fun visualCardChatBubblesRenderDynamicContextAwareCaptioning() = runBlocking {
         val chatRepo = FakeChatRepository()
         val authRepo = FakeAuthRepository()
-        val auditorRepo = StubAuditorRepository()
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
-        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
+        val fakeAI = FakeAIRemoteDataSource()
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore

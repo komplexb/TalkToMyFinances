@@ -117,5 +117,31 @@ data class AuditReceipt(
     val transactions: List<MatchedTransaction> = emptyList(),
     val spec: FinancialQuerySpec = FinancialQuerySpec(),
     @SerialName("income_total") val incomeTotal: Double? = null
+) {
+    fun toReceiptTemplate(): ReceiptTemplate {
+        val nonEmptyLines = summary.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val headlineLines = mutableListOf<String>()
+        val bulletItems = mutableListOf<String>()
+
+        for (line in nonEmptyLines) {
+            when {
+                line.startsWith("•") -> bulletItems.add(line.removePrefix("•").trim())
+                line.startsWith("- ") -> bulletItems.add(line.removePrefix("- ").trim())
+                bulletItems.isEmpty() -> headlineLines.add(line)
+                else -> bulletItems.add(line)
+            }
+        }
+
+        val headline = headlineLines.joinToString(" ").ifBlank { summary.trim() }
+        return ReceiptTemplate(
+            headline = headline,
+            bullets = bulletItems
+        )
+    }
+}
+
+data class ReceiptTemplate(
+    val headline: String,
+    val bullets: List<String>
 )
 

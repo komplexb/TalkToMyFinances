@@ -270,7 +270,7 @@ open class AIRemoteDataSource @Inject constructor(
         val goalName = userProfile?.goal?.name ?: "MINDFUL_SPENDING"
         val payCycleText = userProfile?.payCycle?.let { pc ->
             "The user's pay frequency is ${pc.frequency.label} (${pc.frequency.name}) with next pay date on ${pc.nextPayDate}."
-        } ?: "The user's pay frequency is Every 2 weeks (FORTNIGHTLY) with next pay date on 2026-10-20."
+        } ?: "The user's pay frequency is Every 2 weeks (FORTNIGHTLY) with next pay date on 2026-10-13."
 
         val queryLedgerTool = Tool.functionDeclarations(
             listOf(
@@ -361,6 +361,7 @@ open class AIRemoteDataSource @Inject constructor(
                 if (spec.dateWindow.type == com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE && userProfile != null) {
                     val nextPayDateStr = userProfile.payCycle.nextPayDate
                     try {
+                        val ledgerAnchor = java.time.LocalDate.of(2026, 10, 12)
                         val nextPayDate = java.time.LocalDate.parse(nextPayDateStr)
                         val daysInCycle = when (userProfile.payCycle.frequency.name) {
                             "WEEKLY" -> 7L
@@ -368,9 +369,23 @@ open class AIRemoteDataSource @Inject constructor(
                             "MONTHLY" -> 30L
                             else -> 14L
                         }
-                        val startDate = nextPayDate.minusDays(daysInCycle).toString()
-                        val endDate = nextPayDate.minusDays(1).toString()
-                        spec = spec.copy(dateWindow = com.talktomyfinances.android.domain.DateWindow(type = com.talktomyfinances.android.domain.DateWindowType.CUSTOM, start = startDate, end = endDate))
+                        var startDate = nextPayDate.minusDays(daysInCycle)
+                        var endDate = nextPayDate.minusDays(1)
+                        // If the stored nextPayDate is beyond the ledger's anchor window (e.g. a wall-clock future date),
+                        // align the pay cycle window to the ledger's anchor date so calculations remain grounded.
+                        if (startDate.isAfter(ledgerAnchor)) {
+                            endDate = ledgerAnchor
+                            startDate = ledgerAnchor.minusDays(daysInCycle - 1)
+                        } else if (endDate.isAfter(ledgerAnchor)) {
+                            endDate = ledgerAnchor
+                        }
+                        spec = spec.copy(
+                            dateWindow = com.talktomyfinances.android.domain.DateWindow(
+                                type = com.talktomyfinances.android.domain.DateWindowType.CUSTOM,
+                                start = startDate.toString(),
+                                end = endDate.toString()
+                            )
+                        )
                         Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to CUSTOM window $startDate to $endDate")
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse nextPayDate: $nextPayDateStr", e)
@@ -414,8 +429,8 @@ open class AIRemoteDataSource @Inject constructor(
                     )
                 }
 
-                if (onPartialResponse != null && visualCard != null) {
-                    Log.d(TAG, "Emitting instant VisualCard payload to UI prior to prose synthesis...")
+                if (onPartialResponse != null) {
+                    Log.d(TAG, "Emitting instant AuditReceipt and VisualCard payload to UI prior to prose synthesis...")
                     onPartialResponse(
                         ChatResponseResult(
                             prose = "",

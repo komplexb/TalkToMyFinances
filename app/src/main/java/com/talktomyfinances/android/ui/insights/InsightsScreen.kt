@@ -34,6 +34,13 @@ import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.painterResource
+import com.talktomyfinances.android.ui.onboarding.OnboardingDialog
+
 @Serializable
 object InsightsRoute
 
@@ -44,23 +51,55 @@ fun InsightsScreen(
     openChat: (String?) -> Unit
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
+    var showOnboardingDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(state) {
         if (state is InsightsUiState.NeedsOnboarding) openOnboarding()
     }
-    InsightsContent(state, onRetry = viewModel::load, openChat = openChat)
+
+    if (showOnboardingDialog) {
+        OnboardingDialog(
+            onDismiss = { showOnboardingDialog = false },
+            onFinished = { viewModel.load() }
+        )
+    }
+
+    InsightsContent(
+        state = state,
+        onRetry = viewModel::load,
+        openChat = openChat,
+        onOpenSettings = { showOnboardingDialog = true }
+    )
 }
 
 @Composable
 fun InsightsContent(
     state: InsightsUiState,
     onRetry: () -> Unit = {},
-    openChat: (String?) -> Unit = {}
+    openChat: (String?) -> Unit = {},
+    onOpenSettings: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.testTag("settings_button")
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_settings),
+                    contentDescription = "Reset Pay Cycle & Goal Settings",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         when (state) {
             InsightsUiState.Loading, InsightsUiState.NeedsOnboarding -> LoadingSequence(openChat)
             InsightsUiState.Error -> {

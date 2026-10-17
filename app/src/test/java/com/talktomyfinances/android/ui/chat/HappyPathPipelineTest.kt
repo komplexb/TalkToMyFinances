@@ -115,7 +115,7 @@ class HappyPathPipelineTest {
     }
 
     private class FakeAIRemoteDataSource(
-        var auditorRepo: AuditorRepository? = null,
+        var auditorRepo: com.talktomyfinances.android.domain.AuditorRepository? = null,
         var specToReturn: FinancialQuerySpec = FinancialQuerySpec(
             targetMetric = TargetMetric.TOTAL_SUM,
             includedCategories = listOf("Dining")
@@ -127,83 +127,56 @@ class HappyPathPipelineTest {
         var lastPassedReceipt: AuditReceipt? = null
         var lastPassedMessages: List<ChatMessage> = emptyList()
         var lastPassedGoal: FinancialGoal? = null
+        var lastPassedProfile: OnboardingProfile? = null
 
-        
-    override suspend fun sendMessage(
-        prompt: String,
-        recentMessages: List<ChatMessage>,
-        previousReceipt: AuditReceipt?,
-        userGoal: FinancialGoal?,
-        onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
-    ): com.talktomyfinances.android.domain.ChatResponseResult {
-        lastPassedPrompt = prompt
-        lastPassedReceipt = previousReceipt
-        lastPassedMessages = recentMessages
-        lastPassedGoal = userGoal
-        
-        if (specToReturn.isOutOfSpec) {
-            return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
-        }
-        
-        var receipt: AuditReceipt? = null
-        if (auditorRepo != null) {
-            receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
-        }
-        
-        var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
-        if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
-            val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
-            val title = when {
-                receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
-                distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
-                receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
-                else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
-            }
-            visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
-                cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
-                title = title,
-                totalAmount = receipt.value,
-                items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
-                auditReceipt = receipt,
-                timeframe = receipt.spec.dateWindow.type.name
-            )
-        }
-        
-        val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
-        
-        return com.talktomyfinances.android.domain.ChatResponseResult(
-            prose = prose,
-            auditReceipt = receipt,
-            visualCard = visualCard
-        )
-    }
-
-        fun parseFinancialIntent_old(
-            prompt: String,
-            previousReceipt: AuditReceipt?,
-            recentMessages: List<ChatMessage>
-        ): FinancialQuerySpec {
-            lastPassedPrompt = prompt
-            lastPassedReceipt = previousReceipt
-            lastPassedMessages = recentMessages
-            return specToReturn
-        }
-
-        fun evaluateWithJudge_old(prose: String, verifiedAmount: Double?): String {
-            return judgeProseToReturn
-        }
-
-        fun generateConversationalGuidance_old(
+        override suspend fun sendMessage(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: FinancialGoal?
-        ): String {
+            userProfile: OnboardingProfile?,
+            onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
+        ): com.talktomyfinances.android.domain.ChatResponseResult {
             lastPassedPrompt = prompt
             lastPassedReceipt = previousReceipt
             lastPassedMessages = recentMessages
-            lastPassedGoal = userGoal
-            return guidanceTextToReturn
+            lastPassedGoal = userProfile?.goal
+            lastPassedProfile = userProfile
+
+            if (specToReturn.isOutOfSpec) {
+                return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
+            }
+
+            var receipt: AuditReceipt? = null
+            if (auditorRepo != null) {
+                receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
+            }
+
+            var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
+            if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
+                val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
+                val title = when {
+                    receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
+                    distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
+                    receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
+                    else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
+                }
+                visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
+                    cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                    title = title,
+                    totalAmount = receipt.value,
+                    items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
+                    auditReceipt = receipt,
+                    timeframe = receipt.spec.dateWindow.type.name
+                )
+            }
+
+            val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
+
+            return com.talktomyfinances.android.domain.ChatResponseResult(
+                prose = prose,
+                auditReceipt = receipt,
+                visualCard = visualCard
+            )
         }
     }
 
@@ -227,7 +200,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -267,7 +239,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -298,7 +269,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -362,7 +332,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -404,7 +373,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -469,7 +437,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -532,7 +499,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -578,6 +544,36 @@ class HappyPathPipelineTest {
 
         val cleanText = CurrencySanitizer.sanitize("You spent $105.83 on utility bills this quarter.")
         assertEquals("You spent $105.83 on utility bills this quarter.", cleanText)
+    }
+
+    @Test
+    fun test_happy_path_onboarding_demo_defaults_to_fortnightly_and_mindful_spending() {
+        val demoState = com.talktomyfinances.android.ui.onboarding.OnboardingState(isDemo = true)
+        assertTrue(demoState.isDemo)
+        assertEquals(FinancialGoal.MINDFUL_SPENDING, demoState.selectedGoal)
+        assertEquals(PayFrequency.FORTNIGHTLY, demoState.frequency)
+        assertEquals("2026-10-13", demoState.nextPayDate)
+        assertTrue(demoState.canContinue)
+    }
+
+    @Test
+    fun test_happy_path_receipt_template_formats_headline_and_bullets() {
+        val receipt = AuditReceipt(
+            summary = "You spent $158.02 across 5 transactions.\n• Window: 2026-09-29 to 2026-10-12 (THIS_PAY_CYCLE)\n• Denominator: 2 active months\n• Counted: merchants: ALDI DELIVERY, DOORDASH, UBER *EATS\n• Excluded: pending transactions; internal transfers; credits, income and refunds",
+            value = 158.02,
+            spec = FinancialQuerySpec(
+                targetMetric = TargetMetric.TOTAL_SUM,
+                includedMerchants = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY"),
+                dateWindow = DateWindow(DateWindowType.THIS_PAY_CYCLE)
+            )
+        )
+        val template = receipt.toReceiptTemplate()
+        assertEquals("You spent $158.02 across 5 transactions.", template.headline)
+        assertEquals(4, template.bullets.size)
+        assertEquals("Window: 2026-09-29 to 2026-10-12 (THIS_PAY_CYCLE)", template.bullets[0])
+        assertEquals("Denominator: 2 active months", template.bullets[1])
+        assertEquals("Counted: merchants: ALDI DELIVERY, DOORDASH, UBER *EATS", template.bullets[2])
+        assertEquals("Excluded: pending transactions; internal transfers; credits, income and refunds", template.bullets[3])
     }
 }
 

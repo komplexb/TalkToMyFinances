@@ -219,7 +219,7 @@ def draft(as_of: date, seed: int, months: int) -> tuple[list[dict], list[date]]:
 
 
 def fix_takeaway_gap(rows: list[dict], as_of: date) -> None:
-    """No takeaway spend after this Tuesday, so the buffer chip is true."""
+    """No takeaway spend after this Tuesday, so the buffer chip is true, while ensuring all 3 takeaway merchants appear in the 2-week pay cycle window."""
     week = iso_week_start(as_of)
     cutoff = week + timedelta(days=1)
     if cutoff > as_of:
@@ -227,6 +227,27 @@ def fix_takeaway_gap(rows: list[dict], as_of: date) -> None:
     for row in rows:
         if row["category"] == "Dining" and row["merchantName"] in TAKEAWAY_NAMES and date.fromisoformat(row["date"]) > cutoff:
             row["date"] = cutoff.isoformat()
+
+    # Ensure the 14-day pay cycle window ending at as_of contains multi-merchant takeaway depth
+    # (UBER *EATS, DOORDASH, ALDI DELIVERY) on or before cutoff so the 2-week pay cycle demo
+    # and follow-up "let me see the ubereats transactions" are rich and useful.
+    cycle_start = as_of - timedelta(days=13)
+    in_cycle_merchants = {
+        r.get("merchantName")
+        for r in rows
+        if r["category"] == "Dining"
+        and r.get("merchantName") in TAKEAWAY_NAMES
+        and cycle_start <= date.fromisoformat(r["date"]) <= cutoff
+    }
+    if "ALDI DELIVERY" not in in_cycle_merchants:
+        d = max(cycle_start + timedelta(days=3), min(cutoff - timedelta(days=4), cutoff))
+        rows.append(make(d, "ALDI DELIVERY", -38.45, "Dining", "ALDI DELIVERY"))
+    # Add additional UBER *EATS and DOORDASH orders in the 2-week window (on or before cutoff)
+    rows.append(make(cycle_start, "UBER *EATS", -31.40, "Dining", "UBER *EATS"))
+    rows.append(make(cycle_start + timedelta(days=1), "DOORDASH", -42.50, "Dining", "DOORDASH"))
+    rows.append(make(cycle_start + timedelta(days=2), "UBER *EATS", -28.90, "Dining", "UBER *EATS"))
+    rows.sort(key=lambda r: r["date"])
+
 
 
 def fix_cafe_week(rows: list[dict], as_of: date) -> None:
