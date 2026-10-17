@@ -218,19 +218,58 @@ class ChatViewModel @Inject constructor(
                     else -> payload.timeframe
                 }
 
-                val summaryText = when {
+                val defaultSummaryText = when {
                     timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true) ->
                         "Here is your $title $timeframeDesc."
                     else ->
                         "Here is your $title."
                 }
+                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }
 
-                val chatMsg = ChatMessage(
-                    sender = MessageSender.ASSISTANT,
-                    text = summaryText,
-                    visualCard = payload,
-                    auditReceipt = payload.auditReceipt
-                )
+                val chatMsg = when (payload.cardType) {
+                    "transaction_list" -> {
+                        val receipt = payload.auditReceipt
+                        val txList = receipt?.transactions.orEmpty()
+                        val totalStr = payload.totalAmount?.let { String.format(java.util.Locale.US, "$%.2f", it) }
+                        val header = aiCaption ?: buildString {
+                            append("Here is your $title breakdown")
+                            if (timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true)) {
+                                append(" $timeframeDesc")
+                            }
+                            if (totalStr != null) {
+                                append(" ($totalStr total)")
+                            }
+                            append(":")
+                        }
+                        val bullets = txList.take(15).joinToString("\n") { tx ->
+                            "• ${tx.date} — ${tx.merchant}: $${String.format(java.util.Locale.US, "%.2f", tx.amount)}"
+                        }
+                        val text = if (bullets.isNotBlank()) "$header\n$bullets" else (aiCaption ?: receipt?.summary?.lines()?.firstOrNull() ?: defaultSummaryText)
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = text,
+                            visualCard = null,
+                            auditReceipt = receipt
+                        )
+                    }
+                    "audit_only" -> {
+                        val text = aiCaption ?: payload.auditReceipt?.summary?.lines()?.firstOrNull() ?: defaultSummaryText
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = text,
+                            visualCard = null,
+                            auditReceipt = payload.auditReceipt
+                        )
+                    }
+                    else -> {
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = aiCaption ?: defaultSummaryText,
+                            visualCard = payload,
+                            auditReceipt = payload.auditReceipt
+                        )
+                    }
+                }
                 try {
                     chatRepository.saveMessage(uid, chatMsg)
                 } catch (e: Exception) {
@@ -244,7 +283,14 @@ class ChatViewModel @Inject constructor(
         _inputMode.value = ChatInputMode.VOICE
         _error.value = null
         viewModelScope.launch {
-            val result = liveVoiceManager.startSession()
+            val previousReceipt = _messagesFlow.value.lastOrNull { it.auditReceipt != null }?.auditReceipt
+            val recentTurns = _messagesFlow.value.takeLast(4)
+            val userProfile = try { profileStore.load() } catch (_: Exception) { null }
+            val result = liveVoiceManager.startSession(
+                recentMessages = recentTurns,
+                previousReceipt = previousReceipt,
+                userProfile = userProfile
+            )
             if (result.isFailure) {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to start voice session"
             }

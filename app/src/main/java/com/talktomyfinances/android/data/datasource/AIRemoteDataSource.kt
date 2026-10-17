@@ -297,12 +297,13 @@ open class AIRemoteDataSource @Inject constructor(
                     formatMerchantClustersPrompt() + "\n" +
                     "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n" +
                     "- Parameter Rules:\n" +
-                    "  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items.\n" +
+                    "  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n" +
                     "  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n" +
                     "  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n" +
-                    "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?') using the immediately preceding verified calculation and recent context.\n" +
+                    "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n" +
                     "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
                     "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
+                    "When target_metric is TRANSACTION_LIST or the user asks for a specific merchant's breakdown/transactions, include the dated transaction bullets (• YYYY-MM-DD — MERCHANT: \$X.XX) from the tool output. " +
                     "If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n" +
                     "Do NOT:\n" +
                     formatGuidanceDoNotRulesPrompt()
@@ -313,21 +314,7 @@ open class AIRemoteDataSource @Inject constructor(
 
         val history = mutableListOf<com.google.firebase.ai.type.Content>()
         if (previousReceipt != null) {
-            val contextContent = buildString {
-                append("Immediately preceding verified calculation:\n")
-                if (previousReceipt.spec.includedCategories.isNotEmpty()) {
-                    append("- Categories: ${previousReceipt.spec.includedCategories.joinToString()}\n")
-                }
-                if (previousReceipt.spec.includedMerchants.isNotEmpty()) {
-                    append("- Merchants: ${previousReceipt.spec.includedMerchants.joinToString()}\n")
-                }
-                append("- Window: ${previousReceipt.spec.dateWindow.type.name}\n")
-                append("- Summary: ${previousReceipt.summary}\n")
-                if (previousReceipt.value != null) {
-                    append("- Value: ${previousReceipt.value}\n")
-                }
-                appendReceiptBreakdown(previousReceipt)
-            }
+            val contextContent = buildPreviousReceiptContext(previousReceipt)
             history.add(content("user") { text(contextContent) })
             history.add(content("model") { text("Understood, I have the previous context.") })
         }
@@ -357,41 +344,7 @@ open class AIRemoteDataSource @Inject constructor(
             try {
                 val argsJsonObj = JsonObject(functionCall.args)
                 var spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
-
-                // Intercept THIS_PAY_CYCLE to use user's explicit dates
-                if (spec.dateWindow.type == com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE && userProfile != null) {
-                    val nextPayDateStr = userProfile.payCycle.nextPayDate
-                    try {
-                        val ledgerAnchor = java.time.LocalDate.of(2026, 10, 12)
-                        val nextPayDate = java.time.LocalDate.parse(nextPayDateStr)
-                        val daysInCycle = when (userProfile.payCycle.frequency.name) {
-                            "WEEKLY" -> 7L
-                            "FORTNIGHTLY" -> 14L
-                            "MONTHLY" -> 30L
-                            else -> 14L
-                        }
-                        var startDate = nextPayDate.minusDays(daysInCycle)
-                        var endDate = nextPayDate.minusDays(1)
-                        // If the stored nextPayDate is beyond the ledger's anchor window (e.g. a wall-clock future date),
-                        // align the pay cycle window to the ledger's anchor date so calculations remain grounded.
-                        if (startDate.isAfter(ledgerAnchor)) {
-                            endDate = ledgerAnchor
-                            startDate = ledgerAnchor.minusDays(daysInCycle - 1)
-                        } else if (endDate.isAfter(ledgerAnchor)) {
-                            endDate = ledgerAnchor
-                        }
-                        spec = spec.copy(
-                            dateWindow = com.talktomyfinances.android.domain.DateWindow(
-                                type = com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE,
-                                start = startDate.toString(),
-                                end = endDate.toString()
-                            )
-                        )
-                        Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to THIS_PAY_CYCLE window $startDate to $endDate")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to parse nextPayDate: $nextPayDateStr", e)
-                    }
-                }
+                spec = resolvePayCycleWindow(spec, userProfile)
 
                 Log.d(TAG, "Evaluating FinancialQuerySpec via AuditorRepository: $spec")
                 val auditResult = auditorRepository.compute(spec)
@@ -400,20 +353,7 @@ open class AIRemoteDataSource @Inject constructor(
                 Log.d(TAG, "Auditor computed result: value=${finalReceipt.value}, breakdownSize=${finalReceipt.breakdown.size}")
 
                 if (finalReceipt.value != null && spec.targetMetric != TargetMetric.TRANSACTION_LIST && finalReceipt.breakdown.size > 1) {
-                    val distinctTxCategories = finalReceipt.transactions
-                        .map { it.category }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                    val title = when {
-                        finalReceipt.spec.includedCategories.isNotEmpty() ->
-                            finalReceipt.spec.includedCategories.joinToString()
-                        distinctTxCategories.isNotEmpty() ->
-                            distinctTxCategories.joinToString()
-                        finalReceipt.spec.includedMerchants.size == 1 ->
-                            finalReceipt.spec.includedMerchants.first()
-                        else ->
-                            resolveClusterTitle(finalReceipt.spec.includedMerchants) ?: "Spending"
-                    }
+                    val title = resolveCardTitle(finalReceipt)
                     visualCard = VisualCardPayload(
                         cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
                         title = title,
@@ -441,35 +381,7 @@ open class AIRemoteDataSource @Inject constructor(
                     )
                 }
 
-                val receiptJson = buildJsonObject {
-                    put("summary", finalReceipt.summary)
-                    if (finalReceipt.value != null) {
-                        put("value", finalReceipt.value)
-                    }
-                    put("breakdown", JsonArray(
-                        finalReceipt.breakdown.map { item ->
-                            buildJsonObject {
-                                put("name", item.category)
-                                put("amount", item.amount)
-                                put("percentage", item.percentage)
-                                put("count", item.count)
-                            }
-                        }
-                    ))
-                    put("transactions", JsonArray(
-                        finalReceipt.transactions.take(10).map { tx ->
-                            buildJsonObject {
-                                put("date", tx.date)
-                                put("merchant", tx.merchant)
-                                put("amount", tx.amount)
-                                put("category", tx.category)
-                            }
-                        }
-                    ))
-                    if (finalReceipt.incomeTotal != null) {
-                        put("incomeTotal", finalReceipt.incomeTotal)
-                    }
-                }
+                val receiptJson = buildReceiptJsonForToolResponse(finalReceipt)
 
                 Log.d(TAG, "Submitting tool response back to Gemini for final prose synthesis...")
                 val secondResponse = chat.sendMessage(content("user") {
@@ -650,6 +562,114 @@ open class AIRemoteDataSource @Inject constructor(
             return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->
                 val listLiteral = merchants.joinToString(separator = "\", \"", prefix = "[\"", postfix = "\"]")
                 "  * Queries for '$queryTerms' -> map to included_merchants: $listLiteral and empty included_categories."
+            }
+        }
+
+        fun resolvePayCycleWindow(spec: FinancialQuerySpec, userProfile: OnboardingProfile?): FinancialQuerySpec {
+            if (spec.dateWindow.type == com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE && userProfile != null) {
+                val nextPayDateStr = userProfile.payCycle.nextPayDate
+                return try {
+                    val ledgerAnchor = java.time.LocalDate.of(2026, 10, 12)
+                    val nextPayDate = java.time.LocalDate.parse(nextPayDateStr)
+                    val daysInCycle = when (userProfile.payCycle.frequency.name) {
+                        "WEEKLY" -> 7L
+                        "FORTNIGHTLY" -> 14L
+                        "MONTHLY" -> 30L
+                        else -> 14L
+                    }
+                    var startDate = nextPayDate.minusDays(daysInCycle)
+                    var endDate = nextPayDate.minusDays(1)
+                    // If the stored nextPayDate is beyond the ledger's anchor window (e.g. a wall-clock future date),
+                    // align the full pay cycle window to the ledger's anchor date so calculations remain grounded.
+                    if (startDate.isAfter(ledgerAnchor) || endDate.isAfter(ledgerAnchor)) {
+                        endDate = ledgerAnchor
+                        startDate = ledgerAnchor.minusDays(daysInCycle - 1)
+                    }
+                    Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to THIS_PAY_CYCLE window $startDate to $endDate")
+                    spec.copy(
+                        dateWindow = com.talktomyfinances.android.domain.DateWindow(
+                            type = com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE,
+                            start = startDate.toString(),
+                            end = endDate.toString()
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse nextPayDate: $nextPayDateStr", e)
+                    spec
+                }
+            }
+            return spec
+        }
+
+        fun resolveCardTitle(finalReceipt: AuditReceipt): String {
+            val distinctTxCategories = finalReceipt.transactions
+                .map { it.category }
+                .filter { it.isNotBlank() }
+                .distinct()
+            return when {
+                finalReceipt.spec.includedCategories.isNotEmpty() ->
+                    finalReceipt.spec.includedCategories.joinToString()
+                distinctTxCategories.isNotEmpty() && finalReceipt.spec.includedMerchants.size != 1 ->
+                    distinctTxCategories.joinToString()
+                finalReceipt.spec.includedMerchants.size == 1 ->
+                    finalReceipt.spec.includedMerchants.first()
+                else ->
+                    resolveClusterTitle(finalReceipt.spec.includedMerchants) ?: "Spending"
+            }
+        }
+
+        fun buildPreviousReceiptContext(previousReceipt: AuditReceipt): String {
+            return buildString {
+                append("Immediately preceding verified calculation:\n")
+                if (previousReceipt.spec.includedCategories.isNotEmpty()) {
+                    append("- Categories: ${previousReceipt.spec.includedCategories.joinToString()}\n")
+                }
+                if (previousReceipt.spec.includedMerchants.isNotEmpty()) {
+                    append("- Merchants: ${previousReceipt.spec.includedMerchants.joinToString()}\n")
+                }
+                append("- Window: ${previousReceipt.spec.dateWindow.type.name}\n")
+                append("- Summary: ${previousReceipt.summary}\n")
+                if (previousReceipt.value != null) {
+                    append("- Value: ${previousReceipt.value}\n")
+                }
+                if (previousReceipt.breakdown.isNotEmpty()) {
+                    val breakdownDesc = previousReceipt.breakdown.joinToString("; ") {
+                        "${it.category}: $${String.format(java.util.Locale.US, "%.2f", it.amount)} (${it.percentage}%)"
+                    }
+                    append("- Breakdown: $breakdownDesc\n")
+                }
+            }
+        }
+
+        fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt): JsonObject {
+            return buildJsonObject {
+                put("summary", finalReceipt.summary)
+                if (finalReceipt.value != null) {
+                    put("value", finalReceipt.value)
+                }
+                put("breakdown", JsonArray(
+                    finalReceipt.breakdown.map { item ->
+                        buildJsonObject {
+                            put("name", item.category)
+                            put("amount", item.amount)
+                            put("percentage", item.percentage)
+                            put("count", item.count)
+                        }
+                    }
+                ))
+                put("transactions", JsonArray(
+                    finalReceipt.transactions.take(10).map { tx ->
+                        buildJsonObject {
+                            put("date", tx.date)
+                            put("merchant", tx.merchant)
+                            put("amount", tx.amount)
+                            put("category", tx.category)
+                        }
+                    }
+                ))
+                if (finalReceipt.incomeTotal != null) {
+                    put("incomeTotal", finalReceipt.incomeTotal)
+                }
             }
         }
     }
