@@ -151,7 +151,7 @@ class ChatViewModel @Inject constructor(
             try {
                 val previousReceipt = _messagesFlow.value.lastOrNull { it.auditReceipt != null }?.auditReceipt
                 val recentTurns = _messagesFlow.value.takeLast(4)
-                val userGoal = try { profileStore.load()?.goal } catch (_: Exception) { null }
+                val userProfile = try { profileStore.load() } catch (_: Exception) { null }
 
                 var partialMsgId: String? = null
 
@@ -159,7 +159,7 @@ class ChatViewModel @Inject constructor(
                     prompt = trimmed,
                     recentMessages = recentTurns,
                     previousReceipt = previousReceipt,
-                    userGoal = userGoal,
+                    userProfile = userProfile,
                     onPartialResponse = { partial ->
                         viewModelScope.launch {
                             val partialMsg = ChatMessage(

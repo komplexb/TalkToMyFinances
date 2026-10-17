@@ -355,7 +355,27 @@ open class AIRemoteDataSource @Inject constructor(
             Log.d(TAG, "Gemini requested tool 'query_ledger' with args: ${functionCall.args}")
             try {
                 val argsJsonObj = JsonObject(functionCall.args)
-                val spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
+                var spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
+
+                // Intercept THIS_PAY_CYCLE to use user's explicit dates
+                if (spec.dateWindow.type == com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE && userProfile != null) {
+                    val nextPayDateStr = userProfile.payCycle.nextPayDate
+                    try {
+                        val nextPayDate = java.time.LocalDate.parse(nextPayDateStr)
+                        val daysInCycle = when (userProfile.payCycle.frequency.name) {
+                            "WEEKLY" -> 7L
+                            "FORTNIGHTLY" -> 14L
+                            "MONTHLY" -> 30L
+                            else -> 14L
+                        }
+                        val startDate = nextPayDate.minusDays(daysInCycle).toString()
+                        val endDate = nextPayDate.minusDays(1).toString()
+                        spec = spec.copy(dateWindow = com.talktomyfinances.android.domain.DateWindow(type = com.talktomyfinances.android.domain.DateWindowType.CUSTOM, start = startDate, end = endDate))
+                        Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to CUSTOM window $startDate to $endDate")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse nextPayDate: $nextPayDateStr", e)
+                    }
+                }
 
                 Log.d(TAG, "Evaluating FinancialQuerySpec via AuditorRepository: $spec")
                 val auditResult = auditorRepository.compute(spec)
@@ -420,6 +440,9 @@ open class AIRemoteDataSource @Inject constructor(
                             }
                         }
                     ))
+                    if (finalReceipt.incomeTotal != null) {
+                        put("incomeTotal", finalReceipt.incomeTotal)
+                    }
                 }
 
                 Log.d(TAG, "Submitting tool response back to Gemini for final prose synthesis...")

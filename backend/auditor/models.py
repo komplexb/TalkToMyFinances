@@ -103,6 +103,7 @@ class AuditReceipt(BaseModel):
     breakdown: List[BreakdownItem] = Field(default_factory=list)
     transactions: List[MatchedTransaction] = Field(default_factory=list)
     spec: FinancialQuerySpec
+    income_total: Optional[float] = None
 
 
 class InsightChip(BaseModel):

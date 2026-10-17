@@ -345,6 +345,11 @@ def execute_spec_compute(
             continue
         filtered.append((d, tx))
 
+
+    # Calculate total income during the date window
+    txs_in_window = [tx for d, tx in dated if win_start <= d <= win_end]
+    income_total = sum(float(tx.get("creditAmount", 0.0)) for tx in txs_in_window if str(tx.get("category", "")).strip().lower() == "income" and not _is_pending(tx))
+
     amounts = [abs(float(tx.get("amount", 0))) for _, tx in filtered]
     total = sum(amounts)
     count = len(amounts)
@@ -494,6 +499,7 @@ def execute_spec_compute(
         breakdown=breakdown,
         transactions=matched_txs,
         spec=spec,
+        income_total=round(income_total, 2) if income_total > 0 else None,
     )
 
 

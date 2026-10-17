@@ -115,6 +115,7 @@ data class AuditReceipt(
     val value: Double? = null,
     val breakdown: List<BreakdownItem> = emptyList(),
     val transactions: List<MatchedTransaction> = emptyList(),
-    val spec: FinancialQuerySpec = FinancialQuerySpec()
+    val spec: FinancialQuerySpec = FinancialQuerySpec(),
+    @SerialName("income_total") val incomeTotal: Double? = null
 )
 
