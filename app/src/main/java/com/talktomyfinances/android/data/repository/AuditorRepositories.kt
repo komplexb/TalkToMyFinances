@@ -34,7 +34,14 @@ class CloudRunAuditorRepository @Inject constructor(
                     )
                 }
 
-                val urlsToTry = mutableListOf(configuredUrl)
+                val urlsToTry = mutableListOf<String>()
+                if (com.talktomyfinances.android.BuildConfig.DEBUG) {
+                    urlsToTry.add("http://127.0.0.1:8000")
+                    urlsToTry.add("http://10.0.2.2:8000")
+                }
+                if (!urlsToTry.contains(configuredUrl)) {
+                    urlsToTry.add(configuredUrl)
+                }
                 if (configuredUrl.contains("127.0.0.1") || configuredUrl.contains("localhost")) {
                     val emulatorUrl = configuredUrl.replace("127.0.0.1", "10.0.2.2").replace("localhost", "10.0.2.2")
                     if (!urlsToTry.contains(emulatorUrl)) {
@@ -45,10 +52,11 @@ class CloudRunAuditorRepository @Inject constructor(
                 var lastException: Exception? = null
                 for (baseUrl in urlsToTry) {
                     try {
+                        val isLocal = baseUrl.contains("127.0.0.1") || baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")
                         val conn = (URL("${baseUrl.trimEnd('/')}/compute").openConnection() as HttpURLConnection).apply {
                             requestMethod = "POST"
                             doOutput = true
-                            connectTimeout = 2_500
+                            connectTimeout = if (isLocal) 1_000 else 2_500
                             readTimeout = 30_000
                             setRequestProperty("Content-Type", "application/json")
                         }

@@ -39,6 +39,7 @@ class AuditRequest(BaseModel):
     goal: Optional[str] = "SAVINGS"
     payFrequency: Optional[str] = "FORTNIGHTLY"
     nextPayDate: Optional[str] = "2026-10-15"
+    isDemo: Optional[bool] = None
 
 class QueryRequest(BaseModel):
     query: Optional[str] = None
@@ -60,7 +61,7 @@ FACT_CATALOG = [
     {"id": 10, "text": "Entertainment spend is on track for the quarter.", "recency": "this_quarter", "category": "entertainment", "is_serendipity": False, "drilldown_prompt": "How much did I spend on entertainment this quarter?"},
 ]
 
-GOLDEN_MINDFUL_SPENDING_CHIPS = [
+GOLDEN_DEMO_CHIPS = [
     InsightChip(
         text=item["text"],
         recency=item["recency"],
@@ -69,6 +70,7 @@ GOLDEN_MINDFUL_SPENDING_CHIPS = [
     )
     for item in FACT_CATALOG[:3]
 ]
+GOLDEN_MINDFUL_SPENDING_CHIPS = GOLDEN_DEMO_CHIPS
 
 def get_genai_client():
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -83,8 +85,9 @@ def get_genai_client():
 @app.post("/audit", response_model=AuditResponse)
 def run_audit(req: AuditRequest) -> AuditResponse:
     """Runs Curation Agent over the Fact Catalog to pick 3 relevant chips (2 goal + 1 serendipity)."""
-    if auditor_config.ENABLE_GOLDEN_DEMO_CHIPS and (req.goal or "").strip().upper() == "MINDFUL_SPENDING":
-        return AuditResponse(chips=GOLDEN_MINDFUL_SPENDING_CHIPS)
+    is_demo = req.isDemo if req.isDemo is not None else auditor_config.ENABLE_GOLDEN_DEMO_CHIPS
+    if is_demo:
+        return AuditResponse(chips=GOLDEN_DEMO_CHIPS)
 
     client = get_genai_client()
     if not client:
