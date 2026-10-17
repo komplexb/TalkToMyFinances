@@ -390,7 +390,7 @@ open class AIRemoteDataSource @Inject constructor(
                     ))
                 }
 
-                val secondResponse = chat.sendMessage(content("function") {
+                val secondResponse = chat.sendMessage(content("user") {
                     part(FunctionResponsePart(functionCall.name, receiptJson))
                 })
                 finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() } ?: finalReceipt.summary
