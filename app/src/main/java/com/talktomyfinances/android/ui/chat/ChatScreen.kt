@@ -1,8 +1,6 @@
 package com.talktomyfinances.android.ui.chat
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,25 +13,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.style.MutableStyleState
 import androidx.compose.foundation.style.Style
 import androidx.compose.foundation.style.styleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -52,13 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.talktomyfinances.android.R
@@ -74,6 +65,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.style.ExperimentalFoundationStyleApi
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.talktomyfinances.android.domain.VoiceSessionStatus
@@ -281,13 +273,16 @@ fun ChatMessageItem(message: ChatMessage) {
             VisualCardView(visualCard = cardWithReceipt)
         }
 
-        message.auditReceipt?.let { receipt ->
-            Spacer(modifier = Modifier.height(6.dp))
-            AuditReceiptCard(receipt = receipt)
+        if (message.visualCard == null) {
+            message.auditReceipt?.let { receipt ->
+                Spacer(modifier = Modifier.height(6.dp))
+                AuditReceiptCard(receipt = receipt)
+            }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
 fun AuditReceiptCard(
     receipt: AuditReceipt,
