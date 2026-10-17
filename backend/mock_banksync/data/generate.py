@@ -381,7 +381,8 @@ def fix_pay_cycles(rows: list[dict], paydays: list[date], as_of: date) -> None:
 
 def mark_recent_pending(rows: list[dict]) -> None:
     for row in rows[-2:]:
-        row["pending"] = True
+        if row.get("merchantName") != "SQ *CAFE NEWTOWN":
+            row["pending"] = True
 
 
 # --------------------------------------------------------------------------
@@ -397,9 +398,9 @@ def validate(rows: list[dict], paydays: list[date], as_of: date) -> dict:
     def window_net(lo: date, hi: date) -> float:
         return total(rows_between(rows, lo, hi))
 
-    # This week: cafe micro-win.
+    # This week: cafe micro-win (must be settled so default exclude_pending=True counts it).
     week_cafe = [r for r in rows_between(rows, week, day)
-                 if r["category"] == "Dining" and r["description"] not in TAKEAWAY_NAMES]
+                 if r["category"] == "Dining" and r["description"] not in TAKEAWAY_NAMES and not r["pending"]]
     cafe_week = sum(abs(r["amount"]) for r in week_cafe)
     cafe_set = set(map(id, week_cafe))
     prior = []

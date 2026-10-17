@@ -15,17 +15,17 @@ def mock_transactions():
 # ===========================================================================
 
 def test_happy_path_micro_win_1_cafe_this_week(mock_transactions):
-    """Micro-Win 1: Cafe spend this week ($9.50 across 1 transaction, including recent pending)."""
+    """Micro-Win 1: Cafe spend this week ($9.50 across 1 settled transaction with default exclude_pending=True)."""
     spec = FinancialQuerySpec(
         target_metric="TOTAL_SUM",
         included_merchants=["SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"],
         date_window=DateWindow(type="THIS_WEEK"),
-        exclude_pending=False,
     )
     receipt = execute_spec_compute(spec, mock_transactions)
     assert receipt.value == 9.50
     assert "across 1 transaction" in receipt.summary
     assert "THIS_WEEK" in receipt.summary
+
 
 
 def test_happy_path_micro_win_2_takeaway_buffer_this_cycle(mock_transactions):
