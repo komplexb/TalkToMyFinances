@@ -115,6 +115,7 @@ class HappyPathPipelineTest {
     }
 
     private class FakeAIRemoteDataSource(
+        var auditorRepo: AuditorRepository? = null,
         var specToReturn: FinancialQuerySpec = FinancialQuerySpec(
             targetMetric = TargetMetric.TOTAL_SUM,
             includedCategories = listOf("Dining")
@@ -127,7 +128,56 @@ class HappyPathPipelineTest {
         var lastPassedMessages: List<ChatMessage> = emptyList()
         var lastPassedGoal: FinancialGoal? = null
 
-        override suspend fun parseFinancialIntent(
+        
+    override suspend fun sendMessage(
+        prompt: String,
+        recentMessages: List<ChatMessage>,
+        previousReceipt: AuditReceipt?,
+        userGoal: FinancialGoal?
+    ): com.talktomyfinances.android.domain.ChatResponseResult {
+        lastPassedPrompt = prompt
+        lastPassedReceipt = previousReceipt
+        lastPassedMessages = recentMessages
+        lastPassedGoal = userGoal
+        
+        if (specToReturn.isOutOfSpec) {
+            return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
+        }
+        
+        var receipt: AuditReceipt? = null
+        if (auditorRepo != null) {
+            receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
+        }
+        
+        var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
+        if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
+            val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
+            val title = when {
+                receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
+                distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
+                receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
+                else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
+            }
+            visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
+                cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                title = title,
+                totalAmount = receipt.value,
+                items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
+                auditReceipt = receipt,
+                timeframe = receipt.spec.dateWindow.type.name
+            )
+        }
+        
+        val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
+        
+        return com.talktomyfinances.android.domain.ChatResponseResult(
+            prose = prose,
+            auditReceipt = receipt,
+            visualCard = visualCard
+        )
+    }
+
+        fun parseFinancialIntent_old(
             prompt: String,
             previousReceipt: AuditReceipt?,
             recentMessages: List<ChatMessage>
@@ -138,11 +188,11 @@ class HappyPathPipelineTest {
             return specToReturn
         }
 
-        override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
+        fun evaluateWithJudge_old(prose: String, verifiedAmount: Double?): String {
             return judgeProseToReturn
         }
 
-        override suspend fun generateConversationalGuidance(
+        fun generateConversationalGuidance_old(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
@@ -164,6 +214,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.PERIOD_AVERAGE,
                 includedCategories = listOf("Dining"),
@@ -204,6 +255,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 isOutOfSpec = true,
                 outOfSpecReason = "Describe my spending habits and make recommendations"
@@ -240,7 +292,7 @@ class HappyPathPipelineTest {
         val auditorRepo = StubAuditorRepository()
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
-        val fakeAI = FakeAIRemoteDataSource()
+        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
@@ -297,6 +349,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedMerchants = listOf("SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"),
@@ -338,6 +391,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedMerchants = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY"),
@@ -402,6 +456,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedCategories = listOf("Subscriptions"),
@@ -464,6 +519,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedCategories = listOf("Utilities"),

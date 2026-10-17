@@ -22,6 +22,10 @@ import com.google.firebase.ai.type.ResponseModality
 import com.google.firebase.ai.type.SpeechConfig
 import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
+import com.google.firebase.ai.type.FunctionCallPart
+import com.google.firebase.ai.type.FunctionResponsePart
+import com.google.firebase.ai.type.Tool
+import com.google.firebase.ai.type.FunctionDeclaration
 import com.google.firebase.ai.type.generationConfig
 import com.talktomyfinances.android.data.schema.MealSchema
 import com.talktomyfinances.android.data.schema.RecipeSchema
@@ -33,6 +37,12 @@ import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.google.firebase.perf.performance
 import com.google.firebase.perf.trace
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import com.google.firebase.ai.type.LatLng
@@ -46,28 +56,26 @@ import com.talktomyfinances.android.domain.DateWindowType
 import com.talktomyfinances.android.domain.DenominatorStrategy
 import com.talktomyfinances.android.domain.TargetMetric
 import com.talktomyfinances.android.domain.TemporalGrain
+import com.talktomyfinances.android.domain.AuditorRepository
+import com.talktomyfinances.android.domain.ChatResponseResult
+import com.talktomyfinances.android.domain.VisualCardItem
+import com.talktomyfinances.android.domain.VisualCardPayload
+import com.talktomyfinances.android.domain.VisualCardType
 
 interface AIChatDataSource {
-    suspend fun parseFinancialIntent(
-        prompt: String,
-        previousReceipt: AuditReceipt? = null,
-        recentMessages: List<ChatMessage> = emptyList()
-    ): FinancialQuerySpec
-
-    suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String
-
-    suspend fun generateConversationalGuidance(
+    suspend fun sendMessage(
         prompt: String,
         recentMessages: List<ChatMessage> = emptyList(),
         previousReceipt: AuditReceipt? = null,
         userGoal: FinancialGoal? = null
-    ): String
+    ): ChatResponseResult
 }
 
 @OptIn(PublicPreviewAPI::class)
 open class AIRemoteDataSource @Inject constructor(
     private val aiModel: FirebaseAI,
-    private val remoteConfig: FirebaseRemoteConfig
+    private val remoteConfig: FirebaseRemoteConfig,
+    private val auditorRepository: AuditorRepository
 ) : AIChatDataSource {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -248,40 +256,46 @@ open class AIRemoteDataSource @Inject constructor(
         }
     }
 
-    override suspend fun parseFinancialIntent(
+    override suspend fun sendMessage(
         prompt: String,
+        recentMessages: List<ChatMessage>,
         previousReceipt: AuditReceipt?,
-        recentMessages: List<ChatMessage>
-    ): FinancialQuerySpec {
+        userGoal: FinancialGoal?
+    ): ChatResponseResult {
         val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
-        val model = aiModel.generativeModel(
-            modelName = modelName,
-            generationConfig = generationConfig {
-                responseMimeType = "application/json"
-                responseSchema = FINANCIAL_QUERY_SPEC_SCHEMA
-            },
-            systemInstruction = content {
-                text(
-                    "You are an Intent Parser for financial queries in personal finance. " +
-                    "Map user queries into a structured FinancialQuerySpec JSON object.\n" +
-                    "Semantic Mapping Rules:\n" +
-                    "- target_metric: PERIOD_AVERAGE for 'average/typical spend per <period>', AVERAGE_TRANSACTION for 'average order/transaction amount', " +
-                    "TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', " +
-                    "or TRANSACTION_LIST when the user asks to see the individual transactions, charges, bills, or line items (e.g. 'let me see the transactions', 'what were those charges?', 'show me the bills').\n" +
-                    "- temporal_grain: default to 'MONTH' when not specified.\n" +
-                    "- date_window: set type when the query names a period ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD, etc.); default to ALL_TIME otherwise. Use CUSTOM with start/end (YYYY-MM-DD) only for explicit custom ranges.\n" +
-                    "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
-                    formatMerchantClustersPrompt() + "\n" +
-                    "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants (aggregates across all dining, including cafes and delivery).\n" +
-                    "- Resolve conversational antecedents, pronouns, and references (such as 'that category', 'those places', 'that spend', 'the transactions', 'those charges', 'my last order', 'it') using the immediately preceding verified calculation and recent dialogue context. When the user asks to see the transactions from the previous answer, inherit the previous calculation's included_categories, included_merchants, and date_window and set target_metric to TRANSACTION_LIST.\n" +
-                    "- If the query is NOT a verifiable calculation or transaction listing over past transactions — e.g. describing habits, asking for advice, budgeting tips, or a 'what if' simulation — " +
-                    "set is_out_of_spec to true with a one-line out_of_spec_reason."
+        val goalName = userGoal?.name ?: "MINDFUL_SPENDING"
+
+        val queryLedgerTool = Tool.functionDeclarations(
+            listOf(
+                FunctionDeclaration(
+                    name = "query_ledger",
+                    description = "Executes a deterministic calculation or returns a verified transaction listing over the user's ledger.",
+                    parameters = FINANCIAL_QUERY_SPEC_PROPERTIES
                 )
-            }
+            )
         )
 
-        val promptContent = buildString {
-            if (previousReceipt != null) {
+        val model = aiModel.generativeModel(
+            modelName = modelName,
+            systemInstruction = content {
+                text(
+                    "You are an empathetic, practical financial coach in an Australian personal finance app. " +
+                    "The user's primary goal is: $goalName. " +
+                    "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
+                    "Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms). " +
+                    "If the user asks a factual calculation or transaction listing question, autonomously invoke the query_ledger tool with typed parameters. " +
+                    "If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool. " +
+                    "When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
+                    "Do NOT:\n" +
+                    formatGuidanceDoNotRulesPrompt()
+                )
+            },
+            tools = listOf(queryLedgerTool)
+        )
+
+        val history = mutableListOf<com.google.firebase.ai.type.Content>()
+        if (previousReceipt != null) {
+            val contextContent = buildString {
                 append("Immediately preceding verified calculation:\n")
                 if (previousReceipt.spec.includedCategories.isNotEmpty()) {
                     append("- Categories: ${previousReceipt.spec.includedCategories.joinToString()}\n")
@@ -296,110 +310,101 @@ open class AIRemoteDataSource @Inject constructor(
                 }
                 appendReceiptBreakdown(previousReceipt)
             }
-            appendRecentDialogueTurns(recentMessages)
-            append("User Query: $prompt")
+            history.add(content("user") { text(contextContent) })
+            history.add(content("model") { text("Understood, I have the previous context.") })
         }
 
-        return try {
-            val response = model.generateContent(promptContent)
-            val raw = response.text ?: throw IllegalStateException("Empty response from intent parser model")
-            val clean = raw.replace("```json", "").replace("```", "").trim()
-            json.decodeFromString<FinancialQuerySpec>(clean)
+        recentMessages.takeLast(4).forEach { msg ->
+            val role = if (msg.sender == com.talktomyfinances.android.domain.MessageSender.USER) "user" else "model"
+            history.add(content(role) { text(msg.text) })
+        }
+
+        val chat = model.startChat(history)
+        
+        var response = try {
+            chat.sendMessage(prompt)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse intent via Gemini: ${e.message}", e)
-            throw IllegalStateException("Could not parse financial intent for query: $prompt", e)
-        }
-    }
-
-    override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
-        val judgeModelName = remoteConfig.getString(JUDGE_AI_MODEL_KEY).ifBlank { DEFAULT_JUDGE_MODEL }
-        val judgeModel = aiModel.generativeModel(
-            modelName = judgeModelName,
-            systemInstruction = content {
-                text(
-                    "You are a reading-level quality judge for personal finance responses. " +
-                    "Ensure text adheres to Grade 6-8 reading level, uses direct active sentences, and contains zero formal financial jargon. " +
-                    "Crucial: NEVER alter, omit, or approximate dollar amounts or counts. " +
-                    "Preserve standard currency notation (e.g. $0.00, $15.50, never multiple decimal points like $0.0.00). " +
-                    "If the input already adheres to plain English, return it unchanged. " +
-                    "If it contains jargon, simplify it in 1-2 active sentences while preserving all exact numbers. " +
-                    "Reply with the final text only."
-                )
-            }
-        )
-
-        val formattedAmount = if (verifiedAmount != null) {
-            String.format(java.util.Locale.US, "$%.2f", verifiedAmount)
-        } else null
-
-        val prompt = if (formattedAmount != null) {
-            "Prose to judge: \"$prose\". Must preserve exact currency amount: $formattedAmount. Ensure standard currency formatting without multiple decimal points."
-        } else {
-            "Prose to judge: \"$prose\". Ensure standard currency formatting without multiple decimal points."
+            Log.e(TAG, "Chat interaction failed: ${e.message}", e)
+            return ChatResponseResult(prose = "I'm having trouble responding right now. Please try again.")
         }
 
-        return try {
-            val response = judgeModel.generateContent(prompt)
-            val rewritten = response.text?.trim()
-            val textToClean = if (!rewritten.isNullOrBlank()) rewritten else prose
-            CurrencySanitizer.sanitize(textToClean)
-        } catch (e: Exception) {
-            Log.w(TAG, "Judge evaluation skipped due to error: ${e.message}")
-            CurrencySanitizer.sanitize(prose)
-        }
-    }
+        var finalProse: String = response.text ?: ""
+        var finalReceipt: AuditReceipt? = null
+        var visualCard: VisualCardPayload? = null
 
-    override suspend fun generateConversationalGuidance(
-        prompt: String,
-        recentMessages: List<ChatMessage>,
-        previousReceipt: AuditReceipt?,
-        userGoal: FinancialGoal?
-    ): String {
-        val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
-        val goalName = userGoal?.name ?: "MINDFUL_SPENDING"
-        val model = aiModel.generativeModel(
-            modelName = modelName,
-            systemInstruction = content {
-                text(
-                    "You are an empathetic, practical financial coach in an Australian personal finance app. " +
-                    "The user's primary goal is: $goalName. " +
-                    "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
-                    "Use Australian financial context ($ AUD, fortnightly pay cycles, local retail terms). " +
-                    "Ground your advice in the verified breakdown and transactions provided in the context.\n" +
-                    "Do NOT:\n" +
-                    formatGuidanceDoNotRulesPrompt()
-                )
-            }
-        )
+        val functionCall = response.functionCalls.firstOrNull { it.name == "query_ledger" }
+        if (functionCall != null) {
+            try {
+                val argsJsonObj = JsonObject(functionCall.args)
+                val spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
 
-        val promptContent = buildString {
-            if (previousReceipt != null) {
-                append("Immediately preceding verified calculation:\n")
-                append("- Summary: ${CurrencySanitizer.sanitize(previousReceipt.summary)}\n")
-                if (previousReceipt.value != null) {
-                    append("- Verified amount: $${String.format(java.util.Locale.US, "%.2f", previousReceipt.value)}\n")
-                }
-                appendReceiptBreakdown(previousReceipt)
-                if (previousReceipt.transactions.isNotEmpty()) {
-                    val txLines = previousReceipt.transactions.take(10).joinToString("; ") {
-                        "${it.date} ${it.merchant} $${String.format(java.util.Locale.US, "%.2f", it.amount)}"
+                val auditResult = auditorRepository.compute(spec)
+                val rawReceipt = auditResult.getOrThrow()
+                finalReceipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
+
+                if (finalReceipt.value != null && spec.targetMetric != TargetMetric.TRANSACTION_LIST && finalReceipt.breakdown.size > 1) {
+                    val distinctTxCategories = finalReceipt.transactions
+                        .map { it.category }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                    val title = when {
+                        finalReceipt.spec.includedCategories.isNotEmpty() ->
+                            finalReceipt.spec.includedCategories.joinToString()
+                        distinctTxCategories.isNotEmpty() ->
+                            distinctTxCategories.joinToString()
+                        finalReceipt.spec.includedMerchants.size == 1 ->
+                            finalReceipt.spec.includedMerchants.first()
+                        else ->
+                            resolveClusterTitle(finalReceipt.spec.includedMerchants) ?: "Spending"
                     }
-                    append("- Matched transactions: $txLines\n")
+                    visualCard = VisualCardPayload(
+                        cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                        title = title,
+                        totalAmount = finalReceipt.value,
+                        items = finalReceipt.breakdown.map { item ->
+                            VisualCardItem(
+                                category = item.category,
+                                amount = item.amount,
+                                percentage = item.percentage
+                            )
+                        },
+                        auditReceipt = finalReceipt,
+                        timeframe = finalReceipt.spec.dateWindow.type.name
+                    )
                 }
+
+                val receiptJson = buildJsonObject {
+                    put("summary", finalReceipt.summary)
+                    if (finalReceipt.value != null) {
+                        put("value", finalReceipt.value)
+                    }
+                    put("transactions", JsonArray(
+                        finalReceipt.transactions.take(10).map { tx ->
+                            buildJsonObject {
+                                put("date", tx.date)
+                                put("merchant", tx.merchant)
+                                put("amount", tx.amount)
+                                put("category", tx.category)
+                            }
+                        }
+                    ))
+                }
+
+                val secondResponse = chat.sendMessage(content("function") {
+                    part(FunctionResponsePart(functionCall.name, receiptJson))
+                })
+                finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() } ?: finalReceipt.summary
+            } catch (e: Exception) {
+                Log.e(TAG, "Tool execution failed: ${e.message}", e)
+                finalProse = "I ran into an issue calculating that."
             }
-            appendRecentDialogueTurns(recentMessages)
-            append("User message: \"$prompt\"")
         }
 
-        return try {
-            val response = model.generateContent(promptContent)
-            val text = response.text?.trim()?.takeIf { it.isNotBlank() }
-                ?: "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
-            CurrencySanitizer.sanitize(text)
-        } catch (e: Exception) {
-            Log.e(TAG, "Conversational guidance failed: ${e.message}", e)
-            "I'm here to help with your spending and budget. Could you tell me a bit more about what you'd like to look at?"
-        }
+        return ChatResponseResult(
+            prose = CurrencySanitizer.sanitize(finalProse),
+            auditReceipt = finalReceipt,
+            visualCard = visualCard
+        )
     }
 
     private fun StringBuilder.appendReceiptBreakdown(receipt: AuditReceipt) {
@@ -485,8 +490,7 @@ open class AIRemoteDataSource @Inject constructor(
         val TEMPORAL_GRAIN_VALUES: List<String> = TemporalGrain.entries.map { it.name }
         val DENOMINATOR_STRATEGY_VALUES: List<String> = DenominatorStrategy.entries.map { it.name }
 
-        val FINANCIAL_QUERY_SPEC_SCHEMA: Schema = Schema.obj(
-            properties = mapOf(
+        val FINANCIAL_QUERY_SPEC_PROPERTIES = mapOf(
                 "target_metric" to Schema.enumeration(
                     values = TARGET_METRIC_VALUES,
                     description = "The primary financial calculation or transaction listing metric."
@@ -540,7 +544,10 @@ open class AIRemoteDataSource @Inject constructor(
                     description = "One-line reason when is_out_of_spec is true.",
                     nullable = true
                 )
-            ),
+            )
+
+        val FINANCIAL_QUERY_SPEC_SCHEMA: Schema = Schema.obj(
+            properties = FINANCIAL_QUERY_SPEC_PROPERTIES,
             optionalProperties = listOf("out_of_spec_reason")
         )
 
