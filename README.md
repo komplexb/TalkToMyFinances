@@ -210,6 +210,25 @@ Instead of remembering paths or individual server flags, use the root shortcuts:
 
 ## 🔍 Troubleshooting
 
+### App Missing from the Emulator
+If the app is not appearing on the emulator screen or launcher (for example, after wiping emulator data, resetting Gradle caches, or restarting the virtual device):
+
+1. **Build and Install the App**:
+   Run in Terminal or click **Run `app`** in Android Studio:
+   ```sh
+   ./gradlew installDebug   # or `make build`
+   ```
+2. **Launch the Activity via ADB**:
+   ```sh
+   adb shell am start -n com.talktomyfinances.android/.MainActivity
+   ```
+3. **If Build Fails with Cache/Transformed Artifact Errors (`FileNotFoundException` / `NoClassDefFoundError`)**:
+   Stale Gradle daemons can hold onto deleted cache references after clearing `.gradle/caches`. Stop stale daemons and re-sync:
+   ```sh
+   ./gradlew --stop
+   ```
+   In Android Studio, select **File > Sync Project with Gradle Files**, then rebuild.
+
 ### Emulator Connection Failure ("Emulator failed to connect within 5 minutes" / Freeze)
 If the Android emulator fails to boot, freezes on launch, or gives a `failed to connect within 5 minutes` error:
 
