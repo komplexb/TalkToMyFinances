@@ -282,10 +282,18 @@ open class AIRemoteDataSource @Inject constructor(
                     "You are an empathetic, practical financial coach in an Australian personal finance app. " +
                     "The user's primary goal is: $goalName. " +
                     "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
-                    "Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms). " +
-                    "If the user asks a factual calculation or transaction listing question, autonomously invoke the query_ledger tool with typed parameters. " +
-                    "If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool. " +
-                    "When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
+                    "Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms).\n\n" +
+                    "Tool Calling Instructions for 'query_ledger':\n" +
+                    "- If the user asks a factual calculation or transaction listing question, autonomously invoke the query_ledger tool with typed parameters.\n" +
+                    "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
+                    formatMerchantClustersPrompt() + "\n" +
+                    "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n" +
+                    "- Parameter Rules:\n" +
+                    "  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items.\n" +
+                    "  * date_window: set type when named ('this week' -> THIS_WEEK, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n" +
+                    "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?') using the immediately preceding verified calculation and recent context.\n" +
+                    "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
+                    "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately.\n" +
                     "Do NOT:\n" +
                     formatGuidanceDoNotRulesPrompt()
                 )
