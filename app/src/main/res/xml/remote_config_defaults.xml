@@ -17,7 +17,7 @@
     </entry>
     <entry>
         <key>chat_ai_model</key>
-        <value>gemini-3.8-flash</value>
+        <value>gemini-3.5-flash-lite</value>
     </entry>
     <entry>
         <key>hybrid_cloud_model</key>

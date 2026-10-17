@@ -48,7 +48,7 @@ class CloudRunAuditorRepository @Inject constructor(
                         val conn = (URL("${baseUrl.trimEnd('/')}/compute").openConnection() as HttpURLConnection).apply {
                             requestMethod = "POST"
                             doOutput = true
-                            connectTimeout = 10_000
+                            connectTimeout = 2_500
                             readTimeout = 30_000
                             setRequestProperty("Content-Type", "application/json")
                         }

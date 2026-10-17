@@ -95,7 +95,8 @@ class LiveVoiceProtocolTest {
         prompt: String,
         recentMessages: List<ChatMessage>,
         previousReceipt: AuditReceipt?,
-        userGoal: FinancialGoal?
+        userGoal: FinancialGoal?,
+        onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
     ): com.talktomyfinances.android.domain.ChatResponseResult {
         lastPassedPrompt = prompt
         lastPassedReceipt = previousReceipt

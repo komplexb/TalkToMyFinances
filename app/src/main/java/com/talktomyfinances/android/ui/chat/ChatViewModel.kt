@@ -153,14 +153,29 @@ class ChatViewModel @Inject constructor(
                 val recentTurns = _messagesFlow.value.takeLast(4)
                 val userGoal = try { profileStore.load()?.goal } catch (_: Exception) { null }
 
+                var partialMsgId: String? = null
+
                 val response = aiChatDataSource.sendMessage(
                     prompt = trimmed,
                     recentMessages = recentTurns,
                     previousReceipt = previousReceipt,
-                    userGoal = userGoal
+                    userGoal = userGoal,
+                    onPartialResponse = { partial ->
+                        viewModelScope.launch {
+                            val partialMsg = ChatMessage(
+                                sender = MessageSender.ASSISTANT,
+                                text = "Checking ledger & calculating verified facts...",
+                                auditReceipt = partial.auditReceipt,
+                                visualCard = partial.visualCard
+                            )
+                            partialMsgId = partialMsg.id
+                            chatRepository.saveMessage(uid, partialMsg)
+                        }
+                    }
                 )
 
                 val assistantMsg = ChatMessage(
+                    id = partialMsgId ?: java.util.UUID.randomUUID().toString(),
                     sender = MessageSender.ASSISTANT,
                     text = response.prose,
                     auditReceipt = response.auditReceipt,

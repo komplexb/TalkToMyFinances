@@ -67,7 +67,8 @@ interface AIChatDataSource {
         prompt: String,
         recentMessages: List<ChatMessage> = emptyList(),
         previousReceipt: AuditReceipt? = null,
-        userGoal: FinancialGoal? = null
+        userGoal: FinancialGoal? = null,
+        onPartialResponse: ((ChatResponseResult) -> Unit)? = null
     ): ChatResponseResult
 }
 
@@ -260,7 +261,8 @@ open class AIRemoteDataSource @Inject constructor(
         prompt: String,
         recentMessages: List<ChatMessage>,
         previousReceipt: AuditReceipt?,
-        userGoal: FinancialGoal?
+        userGoal: FinancialGoal?,
+        onPartialResponse: ((ChatResponseResult) -> Unit)?
     ): ChatResponseResult {
         val modelName = remoteConfig.getString(CHAT_AI_MODEL_KEY).ifBlank { DEFAULT_CHAT_MODEL }
         val goalName = userGoal?.name ?: "MINDFUL_SPENDING"
@@ -385,6 +387,17 @@ open class AIRemoteDataSource @Inject constructor(
                     )
                 }
 
+                if (onPartialResponse != null && visualCard != null) {
+                    Log.d(TAG, "Emitting instant VisualCard payload to UI prior to prose synthesis...")
+                    onPartialResponse(
+                        ChatResponseResult(
+                            prose = "",
+                            auditReceipt = finalReceipt,
+                            visualCard = visualCard
+                        )
+                    )
+                }
+
                 val receiptJson = buildJsonObject {
                     put("summary", finalReceipt.summary)
                     if (finalReceipt.value != null) {
@@ -444,7 +457,7 @@ open class AIRemoteDataSource @Inject constructor(
     companion object {
         private const val CHAT_AI_MODEL_KEY = "chat_ai_model"
         private const val JUDGE_AI_MODEL_KEY = "judge_ai_model"
-        private const val DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
+        private const val DEFAULT_CHAT_MODEL = "gemini-3.5-flash-lite"
         private const val DEFAULT_JUDGE_MODEL = "gemini-3.5-flash-lite"
         //Remote Config Keys
         private const val GENERATE_RECIPE_KEY = "generate_recipe"
