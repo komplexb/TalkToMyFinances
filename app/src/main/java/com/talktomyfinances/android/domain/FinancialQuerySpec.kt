@@ -31,6 +31,7 @@ enum class DenominatorStrategy {
 @Serializable
 enum class DateWindowType {
     @SerialName("THIS_WEEK") THIS_WEEK,
+    @SerialName("THIS_PAY_CYCLE") THIS_PAY_CYCLE,
     @SerialName("LAST_WEEK") LAST_WEEK,
     @SerialName("LAST_MONTH") LAST_MONTH,
     @SerialName("LAST_30_DAYS") LAST_30_DAYS,

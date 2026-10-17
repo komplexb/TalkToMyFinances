@@ -10,6 +10,7 @@ class DateWindow(BaseModel):
 
     type: Literal[
         "THIS_WEEK",
+        "THIS_PAY_CYCLE",
         "LAST_WEEK",
         "LAST_MONTH",
         "LAST_30_DAYS",
