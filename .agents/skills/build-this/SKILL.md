@@ -29,8 +29,14 @@ Guide the implementation with these project rules:
 - **How to deploy**: Add or extend a "How to deploy" section outlining steps needed for prod (`firebase-tools`, console actions, etc.).
 
 ## Execution
-
+Invoke these skills as needed:  ⁠ ⁠ ⁠ 
+- ⁠@⁠f⁠i⁠r⁠e⁠b⁠a⁠s⁠e⁠-⁠a⁠i⁠-⁠l⁠o⁠g⁠i⁠c⁠-⁠b⁠a⁠s⁠i⁠c⁠s⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠c⁠o⁠d⁠e⁠b⁠a⁠s⁠e⁠-⁠d⁠e⁠s⁠i⁠g⁠n⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠t⁠d⁠d⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠g⁠e⁠m⁠i⁠n⁠i⁠-⁠a⁠p⁠i⁠-⁠d⁠e⁠v⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠g⁠e⁠m⁠i⁠n⁠i⁠-⁠l⁠i⁠v⁠e⁠-⁠a⁠p⁠i⁠-⁠d⁠e⁠v⁠ ⁠ ⁠ ⁠ 
 Call the Skill tool with `implement` (or run `/implement` or `@implement`) with the ticket reference, adhering strictly to the workflow rules above.
+
 
 ## Manual Testing
 Instruct the developer how to manually test the new change/feature.

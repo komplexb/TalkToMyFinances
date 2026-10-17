@@ -22,6 +22,8 @@ class ChatDomainTest {
     private val json = Json { 
         ignoreUnknownKeys = true 
         encodeDefaults = true
+        isLenient = true
+        coerceInputValues = true
     }
 
     @Test
@@ -48,6 +50,32 @@ class ChatDomainTest {
         assertEquals(TargetMetric.PERIOD_AVERAGE, decoded.targetMetric)
         assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
         assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
+    }
+
+    @Test
+    fun financialQuerySpecDecodesWithNullTemporalGrainCoercedToDefault() {
+        val jsonWithNullGrain = """
+            {
+              "target_metric": "TOTAL_SUM",
+              "included_merchants": ["Uber"],
+              "excluded_merchants": [],
+              "included_categories": [],
+              "excluded_categories": [],
+              "date_window": { "type": "ALL_TIME", "start": null, "end": null },
+              "temporal_grain": null,
+              "denominator_strategy": null,
+              "exclude_pending": true,
+              "exclude_internal_transfers": true,
+              "is_out_of_spec": false,
+              "out_of_spec_reason": null
+            }
+        """.trimIndent()
+
+        val decoded = json.decodeFromString(FinancialQuerySpec.serializer(), jsonWithNullGrain)
+        assertEquals(TargetMetric.TOTAL_SUM, decoded.targetMetric)
+        assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
+        assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
+        assertEquals(listOf("Uber"), decoded.includedMerchants)
     }
 
     @Test

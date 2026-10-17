@@ -198,3 +198,99 @@ def test_happy_path_prd8_open_ended_habit_description_routes_out_of_spec():
     assert data["status"] == "out_of_spec"
     assert "value" not in data
     assert "Describe my spending habits" in data["reason"]
+
+
+# ===========================================================================
+# 3. Hierarchical Breakdown, TRANSACTION_LIST & Golden Demo Chips (#61)
+# ===========================================================================
+
+def test_happy_path_subscriptions_breakdown_groups_by_merchant(mock_transactions):
+    """Single-category query ('Subscriptions', SIX_MONTHS) groups breakdown by canonical merchant."""
+    spec = FinancialQuerySpec(
+        target_metric="TOTAL_SUM",
+        included_categories=["Subscriptions"],
+        date_window=DateWindow(type="SIX_MONTHS"),
+    )
+    receipt = execute_spec_compute(spec, mock_transactions)
+    assert receipt.value == 139.95
+    assert len(receipt.breakdown) == 2
+    assert receipt.breakdown[0].category == "STREAMY HD"
+    assert receipt.breakdown[0].amount == 90.00
+    assert receipt.breakdown[0].percentage == 64.3
+    assert receipt.breakdown[0].count == 6
+    assert receipt.breakdown[1].category == "NETFLIX"
+    assert receipt.breakdown[1].amount == 49.95
+    assert receipt.breakdown[1].percentage == 35.7
+    assert receipt.breakdown[1].count == 5
+    assert len(receipt.transactions) == 11
+    assert receipt.transactions[0].date == "2026-10-09"
+    assert receipt.transactions[0].merchant == "STREAMY HD"
+
+
+def test_happy_path_unfiltered_query_groups_breakdown_by_category(mock_transactions):
+    """Unfiltered spending query groups breakdown by category rather than merchant."""
+    spec = FinancialQuerySpec(
+        target_metric="TOTAL_SUM",
+        date_window=DateWindow(type="LAST_30_DAYS"),
+    )
+    receipt = execute_spec_compute(spec, mock_transactions)
+    assert len(receipt.breakdown) > 1
+    breakdown_names = {b.category for b in receipt.breakdown}
+    assert "Groceries" in breakdown_names or "Dining" in breakdown_names
+
+
+def test_happy_path_transaction_list_returns_dated_line_items(mock_transactions):
+    """TRANSACTION_LIST target_metric formats dated line items newest-first in summary."""
+    spec = FinancialQuerySpec(
+        target_metric="TRANSACTION_LIST",
+        included_categories=["Subscriptions"],
+        date_window=DateWindow(type="SIX_MONTHS"),
+    )
+    receipt = execute_spec_compute(spec, mock_transactions)
+    assert receipt.value == 139.95
+    assert len(receipt.transactions) == 11
+    assert "Here are the 11 transactions totaling $139.95" in receipt.summary
+    assert "• 2026-10-09: STREAMY HD — $15.00" in receipt.summary
+    assert "• 2026-09-15: NETFLIX — $9.99" in receipt.summary
+
+
+def test_happy_path_audit_mindful_spending_returns_three_golden_chips(monkeypatch):
+    """POST /audit with MINDFUL_SPENDING returns the 3 verified Golden Demo Chips when ENABLE_GOLDEN_DEMO_CHIPS is enabled."""
+    from auditor import config as auditor_config
+    monkeypatch.setattr(auditor_config, "ENABLE_GOLDEN_DEMO_CHIPS", True)
+    response = client.post("/audit", json={"goal": "MINDFUL_SPENDING", "payFrequency": "FORTNIGHTLY"})
+    assert response.status_code == 200
+    chips = response.json()["chips"]
+    assert len(chips) == 3
+    assert chips[0]["recency"] == "this_week"
+    assert chips[0]["drilldown_prompt"] == "How much did I spend on cafes this week?"
+    assert chips[1]["recency"] == "this_pay_cycle"
+    assert chips[1]["drilldown_prompt"] == "How much did I spend on takeaway this pay cycle?"
+    assert chips[2]["recency"] == "this_quarter"
+    assert chips[2]["isSerendipity"] is True
+    assert chips[2]["drilldown_prompt"] == "How much did I spend on utility bills this quarter?"
+
+
+def test_happy_path_compute_endpoint_returns_breakdown_and_transactions():
+    """POST /compute HTTP endpoint serializes breakdown and transactions in AuditReceipt JSON."""
+    response = client.post(
+        "/compute",
+        json={
+            "target_metric": "TOTAL_SUM",
+            "included_categories": ["Subscriptions"],
+            "date_window": {"type": "SIX_MONTHS"},
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["value"] == 139.95
+    assert len(data["breakdown"]) == 2
+    assert data["breakdown"][0]["category"] == "STREAMY HD"
+    assert data["breakdown"][0]["amount"] == 90.0
+    assert data["breakdown"][1]["category"] == "NETFLIX"
+    assert data["breakdown"][1]["amount"] == 49.95
+    assert len(data["transactions"]) == 11
+    assert data["transactions"][0]["date"] == "2026-10-09"
+
+
+

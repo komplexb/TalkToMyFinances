@@ -183,33 +183,55 @@ class ChatViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Track A (Verifiable Math):
+                // Track A (Verifiable Math & Transaction Line-Item Drill-Down):
                 // 2. Deterministic Math via Cloud Run Auditor (/compute)
                 val auditResult = auditorRepository.compute(spec)
                 val rawReceipt = auditResult.getOrThrow()
                 val receipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
 
                 // 3. Plain-English Readability Check via gemini-3.5-flash-lite Judge
-                val finalProse = aiChatDataSource.evaluateWithJudge(receipt.summary, receipt.value)
+                // Skip Judge rewrite for TRANSACTION_LIST so the bulleted line items are preserved verbatim.
+                val finalProse = if (spec.targetMetric == com.talktomyfinances.android.domain.TargetMetric.TRANSACTION_LIST) {
+                    receipt.summary
+                } else {
+                    aiChatDataSource.evaluateWithJudge(receipt.summary, receipt.value)
+                }
 
                 // 4. Assemble inline Visual Card for Track A verifiable math
-                val visualCard = if (receipt.value != null) {
+                // Suppress redundant single-bar (100%) or empty charts, and suppress for TRANSACTION_LIST
+                // so ChatScreen renders the compact AuditReceiptCard ("Verified Fact") instead.
+                val visualCard = if (
+                    receipt.value != null &&
+                    spec.targetMetric != com.talktomyfinances.android.domain.TargetMetric.TRANSACTION_LIST &&
+                    receipt.breakdown.size > 1
+                ) {
+                    val distinctTxCategories = receipt.transactions
+                        .map { it.category }
+                        .filter { it.isNotBlank() }
+                        .distinct()
                     val title = when {
                         receipt.spec.includedCategories.isNotEmpty() ->
-                            receipt.spec.includedCategories.joinToString() + " Spending"
-                        receipt.spec.includedMerchants.isNotEmpty() ->
-                            receipt.spec.includedMerchants.joinToString() + " Spending"
-                        else -> "Spending Breakdown"
+                            receipt.spec.includedCategories.joinToString()
+                        distinctTxCategories.isNotEmpty() ->
+                            distinctTxCategories.joinToString()
+                        receipt.spec.includedMerchants.size == 1 ->
+                            receipt.spec.includedMerchants.first()
+                        else ->
+                            com.talktomyfinances.android.data.datasource.AIRemoteDataSource
+                                .resolveClusterTitle(receipt.spec.includedMerchants)
+                                ?: "Spending"
                     }
                     VisualCard(
                         cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
                         title = title,
                         totalAmount = receipt.value,
-                        items = if (receipt.spec.includedCategories.isNotEmpty()) {
-                            receipt.spec.includedCategories.map {
-                                VisualCardItem(category = it, amount = receipt.value, percentage = 100.0)
-                            }
-                        } else emptyList(),
+                        items = receipt.breakdown.map { item ->
+                            VisualCardItem(
+                                category = item.category,
+                                amount = item.amount,
+                                percentage = item.percentage
+                            )
+                        },
                         auditReceipt = receipt,
                         timeframe = receipt.spec.dateWindow.type.name
                     )

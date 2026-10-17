@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import com.talktomyfinances.android.domain.AuditReceipt
 import com.talktomyfinances.android.domain.ChatMessage
 import com.talktomyfinances.android.domain.DenominatorStrategy
@@ -24,7 +23,7 @@ class ChatFlowTest {
     @get:Rule val rule = createComposeRule()
 
     @Test
-    fun auditReceiptCardExpandsToRevealSpecificationDetails() {
+    fun auditReceiptCardRendersConciseSummaryAndMetricWithoutTechnicalClutter() {
         val receipt = AuditReceipt(
             summary = "Total spend calculated across matching transactions is $253.50.",
             value = 253.50,
@@ -40,22 +39,15 @@ class ChatFlowTest {
             AuditReceiptCard(receipt = receipt)
         }
 
-        // Verify summary and verified badge are initially visible
+        // Verify summary and verified badge are visible cleanly
         rule.onNodeWithText("Verified Fact").assertIsDisplayed()
         rule.onNodeWithText("Total spend calculated across matching transactions is $253.50.").assertIsDisplayed()
         rule.onNodeWithText("Verified Metric: $253.50").assertIsDisplayed()
-        rule.onNodeWithText("Tap for receipt").assertIsDisplayed()
 
-        // Tap to expand disclosure
-        rule.onNodeWithText("Tap for receipt").performClick()
-
-        // Verify expanded details
-        rule.onNodeWithText("Hide details").assertIsDisplayed()
-        rule.onNodeWithText("Audit Specification:").assertIsDisplayed()
-        rule.onNodeWithText("• Target Metric: TOTAL_SUM").assertIsDisplayed()
-        rule.onNodeWithText("• Temporal Grain: MONTH").assertIsDisplayed()
-        rule.onNodeWithText("• Denominator Strategy: ACTIVE_PERIODS_ONLY").assertIsDisplayed()
-        rule.onNodeWithText("• Included Merchants: Uber").assertIsDisplayed()
+        // Raw developer schema and toggle should NOT exist
+        rule.onNodeWithText("Tap for receipt").assertDoesNotExist()
+        rule.onNodeWithText("Audit Specification:").assertDoesNotExist()
+        rule.onNodeWithText("• Target Metric: TOTAL_SUM").assertDoesNotExist()
     }
 
     @Test
@@ -79,7 +71,7 @@ class ChatFlowTest {
     }
 
     @Test
-    fun chatMessageWithVisualCardRendersInlineCardAndAuditReceipt() {
+    fun chatMessageWithVisualCardRendersCleanInlineCardWithoutMathAuditClutter() {
         val visualCard = VisualCardPayload(
             cardType = "category_breakdown",
             title = "Takeaway Spend Breakdown",
@@ -115,10 +107,15 @@ class ChatFlowTest {
 
         // Verify breakdown items rendered inline
         rule.onNodeWithText("Uber Eats").assertIsDisplayed()
+        rule.onNodeWithText("$125.00").assertIsDisplayed()
+        rule.onNodeWithText("(67.4%)").assertIsDisplayed()
         rule.onNodeWithText("Menulog").assertIsDisplayed()
+        rule.onNodeWithText("$60.50").assertIsDisplayed()
+        rule.onNodeWithText("(32.6%)").assertIsDisplayed()
 
-        // Verify inline plain-English audit receipt
-        rule.onNodeWithText("Deterministic Math Audit Receipt").assertIsDisplayed()
-        rule.onNodeWithText("Takeaway spend computed deterministically.").assertIsDisplayed()
+        // Verify math audit box and $/ % toggle are removed from Visual Card
+        rule.onNodeWithText("Deterministic Math Audit Receipt").assertDoesNotExist()
+        rule.onNodeWithText("0 LLM Arithmetic").assertDoesNotExist()
+        rule.onNodeWithText("View: $ (tap for %)").assertDoesNotExist()
     }
 }
