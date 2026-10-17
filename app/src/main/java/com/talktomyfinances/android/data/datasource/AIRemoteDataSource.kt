@@ -381,12 +381,12 @@ open class AIRemoteDataSource @Inject constructor(
                         }
                         spec = spec.copy(
                             dateWindow = com.talktomyfinances.android.domain.DateWindow(
-                                type = com.talktomyfinances.android.domain.DateWindowType.CUSTOM,
+                                type = com.talktomyfinances.android.domain.DateWindowType.THIS_PAY_CYCLE,
                                 start = startDate.toString(),
                                 end = endDate.toString()
                             )
                         )
-                        Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to CUSTOM window $startDate to $endDate")
+                        Log.d(TAG, "Intercepted THIS_PAY_CYCLE: resolving to THIS_PAY_CYCLE window $startDate to $endDate")
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse nextPayDate: $nextPayDateStr", e)
                     }

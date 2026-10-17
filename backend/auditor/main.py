@@ -243,10 +243,12 @@ def resolve_window(
         end = anchor
     elif w.type == "THIS_PAY_CYCLE":
         # Current pay cycle window (14 days for FORTNIGHTLY, 7 for WEEKLY).
-        # If next_pay_date is provided and falls within a valid cycle covering or near the ledger,
-        # compute the cycle window; otherwise anchor the 14-day window ending on `anchor`.
+        # Honor explicit start/end if provided on THIS_PAY_CYCLE, otherwise compute from next_pay_date or anchor.
         cycle_days = _resolve_pay_cycle_days(pay_frequency)
-        if next_pay_date:
+        if w.start:
+            start = _parse_date(w.start)
+            end = _parse_date(w.end) if w.end else anchor
+        elif next_pay_date:
             try:
                 npd = _parse_date(next_pay_date)
                 cand_start = npd - timedelta(days=cycle_days)
