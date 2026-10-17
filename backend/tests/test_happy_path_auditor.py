@@ -54,7 +54,7 @@ def test_happy_path_micro_win_3_groceries_last_30_days(mock_transactions):
 
 
 def test_happy_path_micro_win_4_utilities_this_quarter(mock_transactions):
-    """Micro-Win 4: Seasonal utility bills drop this quarter ($105.83)."""
+    """Micro-Win 4: Seasonal utility bills drop this quarter ($105.83 across 3 providers vs $245.82 prior quarter)."""
     spec = FinancialQuerySpec(
         target_metric="TOTAL_SUM",
         included_categories=["Utilities"],
@@ -62,7 +62,13 @@ def test_happy_path_micro_win_4_utilities_this_quarter(mock_transactions):
     )
     receipt = execute_spec_compute(spec, mock_transactions)
     assert receipt.value == 105.83
-    assert "across 1 transaction" in receipt.summary
+    assert "across 3 transactions" in receipt.summary
+    assert "• Comparison: $139.99 lower than prior quarter ($245.82)" in receipt.summary
+    assert "AGL ENERGY (-$68.61)" in receipt.summary
+    assert "JEMEN ELECTRICITY (-$52.97)" in receipt.summary
+    assert "TCP WATER (-$18.41)" in receipt.summary
+    assert {b.category for b in receipt.breakdown} == {"AGL ENERGY", "JEMEN ELECTRICITY", "TCP WATER"}
+
 
 
 def test_happy_path_micro_win_5_six_months_subscriptions(mock_transactions):

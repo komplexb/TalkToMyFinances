@@ -34,7 +34,10 @@ import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.mutableStateOf
@@ -68,7 +71,8 @@ fun InsightsScreen(
         state = state,
         onRetry = viewModel::load,
         openChat = openChat,
-        onOpenSettings = { showOnboardingDialog = true }
+        onOpenSettings = { showOnboardingDialog = true },
+        onClearChat = viewModel::clearChatHistory
     )
 }
 
@@ -77,8 +81,11 @@ fun InsightsContent(
     state: InsightsUiState,
     onRetry: () -> Unit = {},
     openChat: (String?) -> Unit = {},
-    onOpenSettings: () -> Unit = {}
+    onOpenSettings: () -> Unit = {},
+    onClearChat: () -> Unit = {}
 ) {
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -89,15 +96,48 @@ fun InsightsContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier.testTag("settings_button")
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_settings),
-                    contentDescription = "Reset Pay Cycle & Goal Settings",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.testTag("settings_button")
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_more_vert),
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Goal & Pay Cycle Settings") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_settings),
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onOpenSettings()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Clear Chat History") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_delete),
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onClearChat()
+                        }
+                    )
+                }
             }
         }
         when (state) {

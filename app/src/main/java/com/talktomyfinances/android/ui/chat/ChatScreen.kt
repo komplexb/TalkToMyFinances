@@ -30,6 +30,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,8 +43,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -95,6 +95,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     var showOnboardingDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -122,27 +123,60 @@ fun ChatScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.chat_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                actions = {
-                    IconButton(onClick = { showOnboardingDialog = true }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.chat_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Box {
+                    IconButton(onClick = { showOverflowMenu = true }) {
                         Icon(
-                            painter = painterResource(id = R.drawable.ic_settings),
-                            contentDescription = "Reset Pay Cycle & Goal Settings",
+                            painter = painterResource(id = R.drawable.ic_more_vert),
+                            contentDescription = "More options",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Goal & Pay Cycle Settings") },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_settings),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                showOverflowMenu = false
+                                showOnboardingDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Clear Chat History") },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_delete),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                showOverflowMenu = false
+                                viewModel.clearChatHistory()
+                            }
+                        )
+                    }
+                }
+            }
         },
         bottomBar = {
             ChatBottomInputBar(

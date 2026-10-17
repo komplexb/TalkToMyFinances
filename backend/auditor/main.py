@@ -287,6 +287,37 @@ def resolve_window(
     return start, end
 
 
+def _resolve_prior_window(
+    spec: FinancialQuerySpec,
+    win_start: date,
+    win_end: date,
+) -> Optional[tuple[date, date, str]]:
+    """Returns (prior_start, prior_end, label) for bounded comparison windows."""
+    w_type = spec.date_window.type
+    if w_type == "THIS_QUARTER":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = date(prior_end.year, 3 * ((prior_end.month - 1) // 3) + 1, 1)
+        return prior_start, prior_end, "prior quarter"
+    if w_type == "LAST_30_DAYS":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=29)
+        return prior_start, prior_end, "prior 30 days"
+    if w_type == "THIS_PAY_CYCLE":
+        span = max((win_end - win_start).days + 1, 1)
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=span - 1)
+        return prior_start, prior_end, "prior pay cycle"
+    if w_type == "LAST_MONTH":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end.replace(day=1)
+        return prior_start, prior_end, "prior month"
+    if w_type == "LAST_WEEK":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=6)
+        return prior_start, prior_end, "prior week"
+    return None
+
+
 def _calendar_periods(
     start: date,
     end: date,
@@ -482,6 +513,65 @@ def execute_spec_compute(
             )
         )
 
+    comparison_line = ""
+    prior_win = _resolve_prior_window(spec, win_start, win_end)
+    if spec.target_metric == "TOTAL_SUM" and prior_win is not None:
+        prior_start, prior_end, prior_label = prior_win
+        prior_group_sums: Dict[str, float] = {}
+        prior_total = 0.0
+        for d, tx in dated:
+            if not (prior_start <= d <= prior_end):
+                continue
+            if spec.exclude_pending and _is_pending(tx):
+                continue
+            if spec.exclude_internal_transfers and _is_internal_transfer(tx):
+                continue
+            if not _is_spend(tx):
+                continue
+            name = _normalize(canonical_merchant(tx))
+            if spec.included_merchants and name not in inc_m_set:
+                continue
+            if name in excl_m_set:
+                continue
+            category = _normalize(str(tx.get("category", "")))
+            if spec.included_categories and category not in inc_c_set:
+                continue
+            if category in excl_c_set:
+                continue
+            amt = abs(float(tx.get("amount", 0)))
+            prior_total += amt
+            key = (
+                canonical_merchant(tx)
+                if group_by_merchant
+                else (str(tx.get("category", "")).strip() or "Uncategorized")
+            )
+            prior_group_sums[key] = prior_group_sums.get(key, 0.0) + amt
+
+        if prior_total > 0:
+            diff = round(total - prior_total, 2)
+            if diff < -0.01:
+                direction = f"${abs(diff):,.2f} lower than {prior_label} (${prior_total:,.2f})"
+            elif diff > 0.01:
+                direction = f"${abs(diff):,.2f} higher than {prior_label} (${prior_total:,.2f})"
+            else:
+                direction = f"unchanged vs {prior_label} (${prior_total:,.2f})"
+
+            all_keys = set(group_sums.keys()) | set(prior_group_sums.keys())
+            key_deltas = [
+                (k, round(group_sums.get(k, 0.0) - prior_group_sums.get(k, 0.0), 2))
+                for k in all_keys
+            ]
+            key_deltas = [
+                (k, delta) for k, delta in key_deltas if abs(delta) >= 0.01
+            ]
+            key_deltas.sort(key=lambda item: (-abs(item[1]), item[0]))
+            delta_parts = [
+                f"{k} ({'+' if delta > 0 else '-'}${abs(delta):,.2f})"
+                for k, delta in key_deltas[:3]
+            ]
+            detail_suffix = f" — {', '.join(delta_parts)}" if delta_parts else ""
+            comparison_line = f"• Comparison: {direction}{detail_suffix}\n"
+
     window_desc = f"{win_start} to {win_end} ({spec.date_window.type})"
     if spec.target_metric == "TRANSACTION_LIST":
         if matched_txs:
@@ -508,6 +598,7 @@ def execute_spec_compute(
         summary = (
             f"{core.capitalize()}.\n"
             f"• Window: {window_desc}\n"
+            f"{comparison_line}"
             f"• Denominator: {denom_desc} ({spec.denominator_strategy})\n"
             f"• Counted: {'; '.join(counted_parts)}\n"
             f"• Excluded: {'; '.join(exclusions)}"

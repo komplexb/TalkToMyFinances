@@ -263,6 +263,20 @@ class ChatViewModel @Inject constructor(
         liveVoiceManager.setMuted(!currentMute)
     }
 
+    fun clearChatHistory() {
+        _error.value = null
+        primedPromptHandled = false
+        viewModelScope.launch {
+            val uid = getOrEnsureUserId() ?: return@launch
+            try {
+                chatRepository.clearMessages(uid)
+                _messagesFlow.value = emptyList()
+            } catch (e: Exception) {
+                _error.value = "Failed to clear chat history: ${e.message}"
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch {
@@ -270,3 +284,4 @@ class ChatViewModel @Inject constructor(
         }
     }
 }
+

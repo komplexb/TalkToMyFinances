@@ -81,6 +81,11 @@ class TwoTrackChatPipelineTest {
             messages.add(message)
             flow.value = messages.toList()
         }
+
+        override suspend fun clearMessages(userId: String) {
+            messages.clear()
+            flow.value = emptyList()
+        }
     }
 
     // Fake Live Voice Manager
@@ -425,4 +430,29 @@ class TwoTrackChatPipelineTest {
         assertEquals(listOf("Dining"), diningSpec.includedCategories)
         assertEquals(DateWindowType.LAST_WEEK, diningSpec.dateWindow.type)
     }
+
+    @Test
+    fun clearChatHistory_emptiesMessagesAndResetsContext() = runBlocking {
+        val chatRepo = FakeChatRepository()
+        val authRepo = FakeAuthRepository()
+        val auditorRepo = StubAuditorRepository()
+        val voiceManager = FakeLiveVoiceManager()
+        val profileStore = FakeProfileStore()
+        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
+
+        val viewModel = ChatViewModel(
+            chatRepository = chatRepo,
+            aiChatDataSource = fakeAI,
+            authRepository = authRepo,
+            liveVoiceManager = voiceManager,
+            profileStore = profileStore
+        )
+
+        viewModel.sendMessage("How much did I spend on utility bills this quarter?")
+        assertTrue(chatRepo.messages.isNotEmpty())
+
+        viewModel.clearChatHistory()
+        assertTrue("Expected chat repository messages to be cleared", chatRepo.messages.isEmpty())
+    }
 }
+

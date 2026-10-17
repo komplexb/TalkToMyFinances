@@ -302,7 +302,8 @@ open class AIRemoteDataSource @Inject constructor(
                     "  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n" +
                     "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?') using the immediately preceding verified calculation and recent context.\n" +
                     "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
-                    "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately.\n" +
+                    "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
+                    "If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n" +
                     "Do NOT:\n" +
                     formatGuidanceDoNotRulesPrompt()
                 )
@@ -445,6 +446,16 @@ open class AIRemoteDataSource @Inject constructor(
                     if (finalReceipt.value != null) {
                         put("value", finalReceipt.value)
                     }
+                    put("breakdown", JsonArray(
+                        finalReceipt.breakdown.map { item ->
+                            buildJsonObject {
+                                put("name", item.category)
+                                put("amount", item.amount)
+                                put("percentage", item.percentage)
+                                put("count", item.count)
+                            }
+                        }
+                    ))
                     put("transactions", JsonArray(
                         finalReceipt.transactions.take(10).map { tx ->
                             buildJsonObject {

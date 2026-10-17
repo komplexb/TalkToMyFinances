@@ -322,23 +322,39 @@ def fix_utilities_quarter(rows: list[dict], as_of: date, target: float = 140.0) 
     if s_this == 0 or s_last == 0:
         return
     diff = s_last - s_this
-    if 60 <= diff <= 300:
-        return
-    # This quarter is partial, so shrink the prior quarter rather than inflating
-    # the in-progress one; fall back to scaling the current quarter if that
-    # would over-correct.
-    factor_last = (s_this + target) / s_last
-    if 0.2 <= factor_last <= 2.5:
-        for row in last_rows:
-            scale_amount(row, factor_last)
-        return
-    factor_this = (s_last - target) / s_this
-    if 0.4 <= factor_this <= 2.5:
-        for row in this_rows:
-            scale_amount(row, factor_this)
-        return
-    pool = this_rows if s_this > s_last else last_rows
-    scale_amount(max(pool, key=lambda r: abs(r["amount"])), 0.5)
+    if not (60 <= diff <= 300):
+        # This quarter is partial, so shrink the prior quarter rather than inflating
+        # the in-progress one; fall back to scaling the current quarter if that
+        # would over-correct.
+        factor_last = (s_this + target) / s_last
+        if 0.2 <= factor_last <= 2.5:
+            for row in last_rows:
+                scale_amount(row, factor_last)
+        else:
+            factor_this = (s_last - target) / s_this
+            if 0.4 <= factor_this <= 2.5:
+                for row in this_rows:
+                    scale_amount(row, factor_this)
+            else:
+                pool = this_rows if s_this > s_last else last_rows
+                scale_amount(max(pool, key=lambda r: abs(r["amount"])), 0.5)
+
+    # Ensure this quarter has all 3 utility providers (JEMEN ELECTRICITY, AGL ENERGY, TCP WATER)
+    # even when as_of is early in the quarter, preserving the exact quarterly total.
+    s_this_final = round(sum(abs(r["amount"]) for r in this_rows), 2)
+    this_merchants = {r.get("merchantName") for r in this_rows}
+    if len(this_rows) == 1 and len(this_merchants) == 1 and (this_end - this_start).days >= 7:
+        jemen_amt = round(s_this_final * 0.3449, 2)
+        agl_amt = round(s_this_final * 0.4649, 2)
+        water_amt = round(s_this_final - jemen_amt - agl_amt, 2)
+        row0 = this_rows[0]
+        row0["amount"] = -jemen_amt
+        row0["creditAmount"] = 0.0
+        row0["debitAmount"] = jemen_amt
+        rows.append(make(this_start + timedelta(days=4), "AGL ENERGY", -agl_amt, "Utilities", "AGL ENERGY"))
+        rows.append(make(this_start + timedelta(days=7), "TCP WATER", -water_amt, "Utilities", "TCP WATER"))
+        rows.sort(key=lambda r: r["date"])
+
 
 
 def fix_pay_cycles(rows: list[dict], paydays: list[date], as_of: date) -> None:
