@@ -229,22 +229,7 @@ class ChatViewModel @Inject constructor(
                 val chatMsg = when (payload.cardType) {
                     "transaction_list" -> {
                         val receipt = payload.auditReceipt
-                        val txList = receipt?.transactions.orEmpty()
-                        val totalStr = payload.totalAmount?.let { String.format(java.util.Locale.US, "$%.2f", it) }
-                        val header = aiCaption ?: buildString {
-                            append("Here is your $title breakdown")
-                            if (timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true)) {
-                                append(" $timeframeDesc")
-                            }
-                            if (totalStr != null) {
-                                append(" ($totalStr total)")
-                            }
-                            append(":")
-                        }
-                        val bullets = txList.take(15).joinToString("\n") { tx ->
-                            "• ${tx.date} — ${tx.merchant}: $${String.format(java.util.Locale.US, "%.2f", tx.amount)}"
-                        }
-                        val text = if (bullets.isNotBlank()) "$header\n$bullets" else (aiCaption ?: receipt?.summary?.lines()?.firstOrNull() ?: defaultSummaryText)
+                        val text = aiCaption ?: defaultSummaryText
                         ChatMessage(
                             sender = MessageSender.ASSISTANT,
                             text = text,

@@ -278,12 +278,11 @@ class LiveVoiceProtocolTest {
         )
 
         val msg4 = chatRepo.messages.last()
-        assertTrue(msg4.text.startsWith("Pulling up your three Uber Eats orders from this pay cycle:"))
-        assertTrue(msg4.text.contains("• 2026-10-04 — UBER *EATS: $33.77"))
-        assertTrue(msg4.text.contains("• 2026-10-01 — UBER *EATS: $28.90"))
-        assertTrue(msg4.text.contains("• 2026-09-29 — UBER *EATS: $31.40"))
+        assertEquals("Pulling up your three Uber Eats orders from this pay cycle:", msg4.text)
+        assertFalse("Transaction bullets must not be duplicated into the chat bubble text", msg4.text.contains("•"))
         org.junit.Assert.assertNull(msg4.visualCard)
         assertNotNull(msg4.auditReceipt)
+        assertEquals(3, msg4.auditReceipt?.transactions?.size)
 
         // Event 5: Category breakdown with AI-generated contextual caption
         voiceManager.cardFlow.tryEmit(
@@ -299,5 +298,60 @@ class LiveVoiceProtocolTest {
         val msg5 = chatRepo.messages.last()
         assertEquals("Let's look at how your takeaway spend splits across delivery apps this fortnight.", msg5.text)
         assertNotNull(msg5.visualCard)
+    }
+
+    @Test
+    fun sanitizeBasePromptForQueryLedgerStripsStaleVisualCardAndToolSchemaLines() {
+        val stalePrompt = """
+            You are a helpful assistant.
+            Tool Schema Contract:
+            - Call render_visual_card(card_type, payload) for charts.
+            - Call render_visual_card with parameters.
+            Always be polite and helpful.
+        """.trimIndent()
+
+        val sanitized = LiveVoiceRepositoryImpl.sanitizeBasePromptForQueryLedger(stalePrompt)
+
+        assertFalse(sanitized.contains("render_visual_card"))
+        assertFalse(sanitized.contains("Tool Schema Contract"))
+        assertTrue(sanitized.contains("You are a helpful assistant."))
+        assertTrue(sanitized.contains("Always be polite and helpful."))
+    }
+
+    @Test
+    fun liveQueryLedgerDeclaresOptionalPropertiesForServerSideValidationParity() {
+        val optionalProps = LiveVoiceRepositoryImpl.LIVE_QUERY_LEDGER_OPTIONAL_PROPERTIES
+
+        assertTrue(optionalProps.contains("chat_intro"))
+        assertTrue(optionalProps.contains("included_merchants"))
+        assertTrue(optionalProps.contains("excluded_merchants"))
+        assertTrue(optionalProps.contains("included_categories"))
+        assertTrue(optionalProps.contains("excluded_categories"))
+        assertTrue(optionalProps.contains("temporal_grain"))
+        assertTrue(optionalProps.contains("denominator_strategy"))
+        assertTrue(optionalProps.contains("exclude_pending"))
+        assertTrue(optionalProps.contains("exclude_internal_transfers"))
+        assertTrue(optionalProps.contains("is_out_of_spec"))
+        assertTrue(optionalProps.contains("out_of_spec_reason"))
+
+        // Required properties must be strictly target_metric and date_window
+        val allProps = LiveVoiceRepositoryImpl.LIVE_QUERY_LEDGER_PROPERTIES.keys
+        val requiredProps = allProps - optionalProps.toSet()
+        assertEquals(setOf("target_metric", "date_window"), requiredProps)
+    }
+
+    @Test
+    fun buildLiveSystemInstructionIncludesDirectSpokenAnswerAndToolParityRules() {
+        val prompt = LiveVoiceRepositoryImpl.buildLiveSystemInstruction(
+            basePrompt = "Base financial coach prompt.",
+            userProfile = null,
+            previousReceipt = null,
+            recentMessages = emptyList()
+        )
+
+        assertTrue(prompt.contains("query_ledger"))
+        assertTrue(prompt.contains("LAST_30_DAYS"))
+        assertTrue(prompt.contains("directly answer the user's question", ignoreCase = true))
+        assertTrue(prompt.contains("do NOT read out the full list of card items or bulleted transaction lines"))
     }
 }

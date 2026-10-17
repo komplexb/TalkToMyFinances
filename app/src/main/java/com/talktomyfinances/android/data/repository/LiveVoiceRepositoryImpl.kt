@@ -83,6 +83,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     override val visualCardEvents: SharedFlow<VisualCard> = _visualCardEvents.asSharedFlow()
 
     private var liveSession: LiveSession? = null
+    private val sessionMutex = kotlinx.coroutines.sync.Mutex()
     @Volatile
     private var activeUserProfile: OnboardingProfile? = null
     @Volatile
@@ -96,17 +97,26 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         previousReceipt: AuditReceipt?,
         userProfile: OnboardingProfile?
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            _voiceState.value = VoiceState(
-                status = VoiceSessionStatus.ERROR,
-                errorMessage = "Microphone permission is required for voice mode."
-            )
-            return@withContext Result.failure(SecurityException("Microphone permission denied"))
-        }
-
-        _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTING)
-
+        sessionMutex.lock()
         try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                _voiceState.value = VoiceState(
+                    status = VoiceSessionStatus.ERROR,
+                    errorMessage = "Microphone permission is required for voice mode."
+                )
+                return@withContext Result.failure(SecurityException("Microphone permission denied"))
+            }
+
+            // Ensure any previous session is cleanly stopped before opening a new WebSocket
+            liveSession?.let { existing ->
+                Log.d(TAG, "Closing existing LiveSession before starting a new one")
+                runCatching { existing.stopAudioConversation() }
+                runCatching { existing.close() }
+                liveSession = null
+            }
+
+            _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTING)
+
             val resolvedProfile = userProfile ?: runCatching { profileStore.load() }.getOrNull()
             activeUserProfile = resolvedProfile
             latestReceipt = previousReceipt
@@ -208,10 +218,13 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 errorMessage = "Could not connect to voice service: ${e.message}"
             )
             Result.failure(e)
+        } finally {
+            sessionMutex.unlock()
         }
     }
 
     override suspend fun stopSession(): Unit = withContext(Dispatchers.IO) {
+        sessionMutex.lock()
         try {
             val active = _voiceState.value.activeTranscript
             val status = _voiceState.value.status
@@ -232,6 +245,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         } finally {
             liveSession = null
             _voiceState.value = VoiceState(status = VoiceSessionStatus.DISCONNECTED)
+            sessionMutex.unlock()
         }
     }
 
@@ -254,10 +268,15 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         Log.d(TAG, "Tool call received: ${call.name} (id=${call.id}) args=${call.args}")
         if (call.name == QUERY_LEDGER_TOOL_NAME) {
             return try {
-                val argsJsonObj = JsonObject(call.args)
+                val normalizedArgs = call.args.toMutableMap()
+                val dw = normalizedArgs["date_window"]
+                if (dw is JsonPrimitive && dw.isString) {
+                    normalizedArgs["date_window"] = buildJsonObject { put("type", dw.content) }
+                }
+                val argsJsonObj = JsonObject(normalizedArgs)
                 val chatIntro = (call.args["chat_intro"] as? JsonPrimitive)?.content
                     ?.trim()
-                    ?.takeIf { it.isNotBlank() }
+                    ?.takeIf { it.isNotBlank() && it != "null" }
                 var spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
                 val profile = activeUserProfile ?: runCatching { runBlocking { profileStore.load() } }.getOrNull()
                 spec = AIRemoteDataSource.resolvePayCycleWindow(spec, profile)
@@ -319,8 +338,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 val responseMap = receiptJson.toMutableMap()
                 responseMap["voice_instruction"] = JsonPrimitive(
                     "The detailed card or bulleted transaction breakdown is now displayed on the user's screen. " +
-                    "Summarize the key takeaway in 2 to 3 natural spoken sentences and direct the user to check the details on their screen. " +
-                    "Do not read out individual transaction dates or bullet lists, and never say 'I can't read long lists'."
+                    "Directly answer the user's question in 2 to 3 natural spoken sentences using the headline numbers/top items from this tool output, and direct them to check the full breakdown on their screen. " +
+                    "Do not read out individual transaction dates or long bullet lists."
                 )
                 FunctionResponsePart(
                     name = call.name,
@@ -370,15 +389,29 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             )
         )
 
+        val LIVE_QUERY_LEDGER_OPTIONAL_PROPERTIES =
+            AIRemoteDataSource.FINANCIAL_QUERY_SPEC_OPTIONAL_PROPERTIES + listOf("chat_intro")
+
         val queryLedgerTool = Tool.functionDeclarations(
             listOf(
                 FunctionDeclaration(
                     name = QUERY_LEDGER_TOOL_NAME,
                     description = "Executes a deterministic calculation or returns a verified transaction listing over the user's ledger and automatically renders the detailed card or bulleted breakdown on screen.",
-                    parameters = LIVE_QUERY_LEDGER_PROPERTIES
+                    parameters = LIVE_QUERY_LEDGER_PROPERTIES,
+                    optionalParameters = LIVE_QUERY_LEDGER_OPTIONAL_PROPERTIES
                 )
             )
         )
+
+        internal fun sanitizeBasePromptForQueryLedger(basePrompt: String): String {
+            return basePrompt.lines()
+                .filterNot { line ->
+                    line.contains("render_visual_card", ignoreCase = true) ||
+                        line.contains("Tool Schema Contract", ignoreCase = true)
+                }
+                .joinToString("\n")
+                .trim()
+        }
 
         fun buildLiveSystemInstruction(
             basePrompt: String,
@@ -390,26 +423,24 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val payCycleText = userProfile?.payCycle?.let { pc ->
                 "The user's pay frequency is ${pc.frequency.label} (${pc.frequency.name}) with next pay date on ${pc.nextPayDate}."
             } ?: "The user's pay frequency is Every 2 weeks (FORTNIGHTLY) with next pay date on 2026-10-13."
+            val cleanedBasePrompt = sanitizeBasePromptForQueryLedger(basePrompt)
 
             return buildString {
-                append(basePrompt.trim())
+                append(cleanedBasePrompt)
                 append("\n\n")
                 append("User Goal & Pay Cycle:\n")
                 append("- The user's primary goal is: $goalName. $payCycleText\n\n")
                 append("Tool Calling Instructions for 'query_ledger' (Full Parity with Text Chat):\n")
-                append("- If the user asks any factual calculation, category breakdown, merchant breakdown, or transaction listing question, autonomously invoke the query_ledger tool with typed parameters.\n")
-                append("- Always populate 'chat_intro' with a natural, varied 1-sentence contextual message for the chat bubble that acknowledges what the user just asked for without being repetitive.\n")
+                append("- Whenever the user asks any factual calculation, ranking (e.g. 'which cafe got the most money'), category breakdown, merchant breakdown, or transaction listing question, you MUST invoke the query_ledger tool FIRST before answering.\n")
+                append("- Populate 'chat_intro' with a natural, varied 1-sentence contextual message for the chat bubble that acknowledges what the user just asked for without being repetitive.\n")
                 append("- Invoking query_ledger automatically renders the detailed visual card or bulleted transaction list and Audit Receipt on the user's screen.\n")
-                append("- In your spoken voice response, do NOT try to read out the card items or bulleted transaction lines, and NEVER say meta-phrases like \"I can't read long lists\" or \"I won't read all of those out\". Simply summarize the headline takeaway in 2-3 natural spoken sentences and direct the user to read the detailed card or breakdown on their screen where applicable.\n")
+                append("- Only refer to the card or breakdown on the screen AFTER query_ledger has returned a result. In your spoken voice response, directly answer the user's question (e.g. naming the top merchant/category and its verified dollar amount), do NOT read out the full list of card items or bulleted transaction lines, and NEVER say meta-phrases like \"I can't read long lists\" or \"I won't read all of those out\".\n")
                 append("- Merchant-Level Subcategory Clusters vs Broad Categories:\n")
                 append(AIRemoteDataSource.formatMerchantClustersPrompt()).append("\n")
                 append("  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n")
                 append("- Parameter Rules:\n")
-                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
-                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
-                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
-                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n")
-                append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
+                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much/which merchant got the most', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
+                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'over the last month' or 'past 30 days' -> LAST_30_DAYS, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
                 append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
                 append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n")
                 append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
