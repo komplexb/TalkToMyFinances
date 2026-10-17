@@ -76,8 +76,8 @@ gcloud run services update ttmf-banksync-mock \
 ### 3. Update Firebase Remote Config for Production
 Set the production backend URL and model configurations in the Firebase Console or via Remote Config template:
 
-1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
-2. Configure parameters:
+1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config) (or edit `remote_config.json` and run `npx -y firebase-tools@latest deploy --only remoteconfig`).
+2. Configure parameters — **both URLs must be the `ttmf-auditor` service URL** (the banksync mock has no `/audit` or `/compute` routes):
    - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
    - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`).
    - `chat_ai_model`: `gemini-3.8-flash` (intent parser model).

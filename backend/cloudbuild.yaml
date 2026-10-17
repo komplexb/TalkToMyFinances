@@ -77,4 +77,5 @@ steps:
         "1",
         "--set-env-vars",
         "BANKSYNC_MOCK_KEY=${_MOCK_KEY}",
+        "--allow-unauthenticated",
       ]

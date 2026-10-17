@@ -1,0 +1,14 @@
+# Keeps the Cloud Build docker context lean. The auditor image only needs
+# backend/ (auditor/, mock_banksync/data/, pyproject.toml, uv.lock) and
+# prompts/. Everything else in the repo is app/ and docs/.
+.git
+app
+docs
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+__pycache__
+.gradle
+build
+.idea
+*.iml

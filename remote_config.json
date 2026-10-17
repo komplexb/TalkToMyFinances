@@ -2,12 +2,12 @@
   "conditions": [],
   "parameters": {
     "insights_base_url": {
-      "defaultValue": { "value": "" },
-      "description": "Cloud Run insights backend base URL. Blank = app uses the in-app stub. Set to the live ttmf Cloud Run URL once deployed (DEPLOY.md step 2)."
+      "defaultValue": { "value": "https://ttmf-auditor-430381251226.australia-southeast1.run.app" },
+      "description": "Cloud Run AUDITOR backend base URL (serves /audit and /compute; the app calls these directly). Blank = app uses the in-app stub. NOT the ttmf-banksync-mock URL — the mock is only the auditor's data source and has no /audit or /compute routes."
     },
     "auditor_base_url": {
-      "defaultValue": { "value": "" },
-      "description": "Cloud Run auditor backend base URL; falls back to insights_base_url when blank. Set to the live Cloud Run URL once deployed."
+      "defaultValue": { "value": "https://ttmf-auditor-430381251226.australia-southeast1.run.app" },
+      "description": "Cloud Run auditor base URL for /compute; falls back to insights_base_url when blank. Same ttmf-auditor service."
     },
     "chat_ai_model": {
       "defaultValue": { "value": "gemini-3.8-flash" },

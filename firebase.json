@@ -5,5 +5,8 @@
   "firestore": {
     "database": "(default)",
     "rules": "firestore.rules"
+  },
+  "remoteconfig": {
+    "template": "remote_config.json"
   }
 }
