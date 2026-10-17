@@ -271,7 +271,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 val normalizedArgs = call.args.toMutableMap()
                 val dw = normalizedArgs["date_window"]
                 if (dw is JsonPrimitive && dw.isString) {
-                    normalizedArgs["date_window"] = buildJsonObject { put("type", dw.content) }
+                    val cleanType = dw.content.trim().uppercase().replace(" ", "_")
+                    normalizedArgs["date_window"] = buildJsonObject { put("type", cleanType) }
                 }
                 val argsJsonObj = JsonObject(normalizedArgs)
                 val chatIntro = (call.args["chat_intro"] as? JsonPrimitive)?.content
@@ -439,10 +440,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 append(AIRemoteDataSource.formatMerchantClustersPrompt()).append("\n")
                 append("  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n")
                 append("- Parameter Rules:\n")
-                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much/which merchant got the most', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
-                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'over the last month' or 'past 30 days' -> LAST_30_DAYS, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
-                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
-                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n")
+                append(AIRemoteDataSource.formatParameterRulesPrompt()).append("\n")
                 append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
                 if (previousReceipt != null) {
                     append("\n")

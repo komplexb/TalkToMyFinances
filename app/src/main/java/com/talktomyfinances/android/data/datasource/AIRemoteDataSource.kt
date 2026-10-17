@@ -298,10 +298,7 @@ open class AIRemoteDataSource @Inject constructor(
                     formatMerchantClustersPrompt() + "\n" +
                     "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n" +
                     "- Parameter Rules:\n" +
-                    "  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much/which merchant got the most', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n" +
-                    "  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'over the last month' or 'past 30 days' -> LAST_30_DAYS, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n" +
-                    "  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n" +
-                    "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n" +
+                    formatParameterRulesPrompt() + "\n" +
                     "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
                     "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
                     "When target_metric is TRANSACTION_LIST or the user asks for a specific merchant's breakdown/transactions, include the dated transaction bullets (• YYYY-MM-DD — MERCHANT: \$X.XX) from the tool output. " +
@@ -567,6 +564,15 @@ open class AIRemoteDataSource @Inject constructor(
 
         fun formatGuidanceDoNotRulesPrompt(): String {
             return GUIDANCE_DO_NOT_RULES.joinToString("\n") { "  - $it" }
+        }
+
+        fun formatParameterRulesPrompt(): String {
+            return buildString {
+                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much/which merchant got the most', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
+                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'over the last month' or 'past 30 days' -> LAST_30_DAYS, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
+                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
+                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.")
+            }
         }
 
         fun formatMerchantClustersPrompt(): String {
