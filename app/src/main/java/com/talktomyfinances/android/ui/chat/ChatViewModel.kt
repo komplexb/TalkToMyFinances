@@ -323,16 +323,18 @@ class ChatViewModel @Inject constructor(
     }
 
     companion object {
+        private val LINE_ITEM_OR_BULLET_REGEX = Regex(
+            "^\\s*([•·‣◦⁃∙●○▪▫*—–\\-+]|\\d+[\\.\\)])\\s+|^\\s*\\d{4}-\\d{2}-\\d{2}|^\\s*\\||\\d{4}-\\d{2}-\\d{2}.*(\\\$|AUD)",
+            RegexOption.IGNORE_CASE
+        )
+
         fun sanitizeProseForCardAttachment(prose: String): String {
             val cleanedLines = prose.lines().filterNot { line ->
-                val trimmed = line.trimStart()
-                trimmed.startsWith("•") ||
-                trimmed.startsWith("- ") ||
-                trimmed.startsWith("* ") ||
-                trimmed.startsWith("|")
+                LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(line)
             }
             val cleaned = cleanedLines.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
-            return if (cleaned.isNotBlank()) cleaned else prose.lines().firstOrNull { it.isNotBlank() } ?: prose
+            val nonBulletLine = prose.lines().firstOrNull { it.isNotBlank() && !LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(it) }
+            return if (cleaned.isNotBlank()) cleaned else nonBulletLine ?: "Here is your verified breakdown."
         }
     }
 }

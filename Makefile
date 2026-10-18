@@ -67,15 +67,12 @@ test-backend:
 build:
 	$(GRADLE) assembleDebug
 
-install-latest:
+install: fresh-android
+
+fresh-android:
 	@echo "Building & deploying latest Android code..."
 	$(GRADLE) installDebug
-	@DEVICES=$$("$(ADB)" devices | grep -w "device" | awk '{print $$1}'); \
-	for dev in $$DEVICES; do \
-		echo "Force-stopping and relaunching latest code on $$dev..."; \
-		"$(ADB)" -s "$$dev" shell am force-stop com.talktomyfinances.android 2>/dev/null || true; \
-		"$(ADB)" -s "$$dev" shell am start -n com.talktomyfinances.android/.MainActivity 2>/dev/null || true; \
-	done
+	@$(MAKE) restart
 
 restart:
 	@DEVICES=$$("$(ADB)" devices | grep -w "device" | awk '{print $$1}'); \

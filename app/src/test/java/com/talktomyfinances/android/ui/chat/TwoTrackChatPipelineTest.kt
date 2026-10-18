@@ -483,6 +483,33 @@ class TwoTrackChatPipelineTest {
         assertTrue(prompt.contains("NEVER output raw data tables, transaction bullet lists"))
         assertTrue(prompt.contains("Emergency Fund"))
     }
+
+    @Test
+    fun sanitizeProseForCardAttachment_completelyDropsAglEnergyTransactionBulletsAndMiddleDots_retainingOnlyCoaching() {
+        val rawGeminiOutput = """
+            • 2026-05-15 — AGL ENERGY: $103.43
+            • 2026-04-15 — AGL ENERGY: $116.84
+            • 2026-03-15 — AGL ENERGY: $116.88
+            • 2026-02-15 — AGL ENERGY: $98.61
+            • 2026-01-15 — AGL ENERGY: $86.86
+            · 2025-12-15 — AGL ENERGY: $121.53
+            · 2025-11-15 — AGL ENERGY: $131.22
+            · 2025-10-15 — AGL ENERGY: $129.28
+
+            Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.
+        """.trimIndent()
+
+        val sanitized = ChatViewModel.sanitizeProseForCardAttachment(rawGeminiOutput)
+
+        assertFalse("Expected standard bullets to be stripped", sanitized.contains("2026-05-15"))
+        assertFalse("Expected middle dot bullets to be stripped", sanitized.contains("·"))
+        assertFalse("Expected middle dot transaction date to be stripped", sanitized.contains("2025-12-15"))
+        assertFalse("Expected merchant bullets to be stripped", sanitized.contains("AGL ENERGY"))
+        assertEquals(
+            "Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.",
+            sanitized
+        )
+    }
 }
 
 

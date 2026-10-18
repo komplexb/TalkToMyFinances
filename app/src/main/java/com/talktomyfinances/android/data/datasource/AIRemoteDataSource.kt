@@ -366,7 +366,8 @@ open class AIRemoteDataSource @Inject constructor(
                 val secondResponse = chat.sendMessage(content("user") {
                     part(FunctionResponsePart(functionCall.name, receiptJson))
                 })
-                finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() } ?: finalReceipt.summary
+                finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() }
+                    ?: (finalReceipt.summary.lines().firstOrNull { it.isNotBlank() } ?: finalReceipt.summary)
                 Log.d(TAG, "Gemini final prose synthesis complete: '$finalProse'")
             } catch (e: Exception) {
                 Log.e(TAG, "Tool execution failed: ${e.message}", e)
@@ -674,8 +675,10 @@ open class AIRemoteDataSource @Inject constructor(
         }
 
         fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt): JsonObject {
+            val headlineSummary = finalReceipt.summary.lines().firstOrNull { it.isNotBlank() } ?: finalReceipt.summary
             return buildJsonObject {
-                put("summary", finalReceipt.summary)
+                put("summary", headlineSummary)
+                put("presentation_directive", "The complete list of transactions and verified totals are already displayed on screen in the visual card. Do NOT repeat or list transaction bullets, dates, or dollar items in your text response. Provide 1-2 concise sentences of warm, encouraging coaching context.")
                 if (finalReceipt.value != null) {
                     put("value", finalReceipt.value)
                 }
