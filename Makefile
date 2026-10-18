@@ -67,9 +67,9 @@ test-backend:
 build:
 	$(GRADLE) assembleDebug
 
-install: fresh-android
+install-latest: install-latest
 
-fresh-android:
+install-latest:
 	@echo "Building & deploying latest Android code..."
 	$(GRADLE) installDebug
 	@$(MAKE) restart
