@@ -74,13 +74,14 @@ gcloud run services update ttmf-banksync-mock \
 ---
 
 ### 3. Update Firebase Remote Config for Production
-Set the production backend URL, model configurations, and voice parameters in the Firebase Console or via Remote Config template:
+Set the production backend URL, model configurations, voice parameters, and feature flags in the Firebase Console or via Remote Config template:
 
 1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
 2. Configure parameters:
+   - `is_demo`: Boolean flag to enable/disable the restricted happy-path demonstration mode. Default is `true` for evaluation. Set this to `false` in the console when rolling out to general users.
    - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves the `/audit` endpoint for the Insights Screen (including the 3 verified Golden Demo Chips for `MINDFUL_SPENDING`).
    - `auditor_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves Track A verifiable calculations and transaction line-item drill-downs (`/compute` and `/query`, returning `AuditReceipt.breakdown` and `AuditReceipt.transactions`). Track B conversational guidance executes client-side via Firebase AI Logic.
-   - `chat_ai_model`: `gemini-3.8-flash` (intent parser model using declarative `generationConfig.responseSchema` constrained decoding for `FinancialQuerySpec`, including `TRANSACTION_LIST`, `THIS_WEEK`, and `LAST_WEEK`).
+   - `chat_ai_model`: `gemini-3.5-flash-lite` (intent parser and chat response model).
    - `judge_ai_model`: `gemini-3.5-flash-lite` (readability judge model).
    - `live_model_name`: `gemini-3.1-flash-live-preview` (Gemini Live voice streaming model).
    - `live_model_voice`: `Puck` (overridable in console with any Gemini studio voice, e.g., `Aoede`, `Charon`, `Fenrir`, `Kore`).

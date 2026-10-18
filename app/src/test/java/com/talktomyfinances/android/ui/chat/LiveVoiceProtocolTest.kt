@@ -90,20 +90,15 @@ class LiveVoiceProtocolTest {
     }
 
     private class FakeAIRemoteDataSource : AIChatDataSource {
-        override suspend fun parseFinancialIntent(
-            prompt: String,
-            previousReceipt: AuditReceipt?,
-            recentMessages: List<ChatMessage>
-        ): FinancialQuerySpec = FinancialQuerySpec(targetMetric = TargetMetric.TOTAL_SUM)
-
-        override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String = prose
-
-        override suspend fun generateConversationalGuidance(
+        override suspend fun sendMessage(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: FinancialGoal?
-        ): String = "Guidance"
+            userProfile: OnboardingProfile?,
+            onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
+        ): com.talktomyfinances.android.domain.ChatResponseResult {
+            return com.talktomyfinances.android.domain.ChatResponseResult(prose = "Response")
+        }
     }
 
     private val canonicalLivePrompt: String by lazy {
@@ -139,7 +134,7 @@ class LiveVoiceProtocolTest {
     fun voiceAssistantAcousticPersonaReflectsAustralianRetailConventions() {
         val prompt = canonicalLivePrompt
 
-        // Grounded in Australian financial conventions
+        // Grounded in Australian financial context
         assertTrue(prompt.contains("Australian financial context"))
         assertTrue(prompt.contains("\$ AUD"))
         assertTrue(prompt.contains("fortnightly pay cycles"))
@@ -186,7 +181,6 @@ class LiveVoiceProtocolTest {
     fun visualCardChatBubblesRenderDynamicContextAwareCaptioning() = runBlocking {
         val chatRepo = FakeChatRepository()
         val authRepo = FakeAuthRepository()
-        val auditorRepo = StubAuditorRepository()
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource()
@@ -194,7 +188,6 @@ class LiveVoiceProtocolTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -242,5 +235,69 @@ class LiveVoiceProtocolTest {
 
         val msg3 = chatRepo.messages.last()
         assertEquals("Here is your Utility Bills this quarter.", msg3.text)
+
+        // Event 4: Single-merchant transaction breakdown (e.g. Uber Eats breakdown via query_ledger)
+        val uberReceipt = AuditReceipt(
+            summary = "You spent $94.07 across 3 transactions.",
+            value = 94.07,
+            transactions = listOf(
+                com.talktomyfinances.android.domain.MatchedTransaction(
+                    date = "2026-10-04",
+                    merchant = "UBER *EATS",
+                    category = "Dining",
+                    amount = 33.77
+                ),
+                com.talktomyfinances.android.domain.MatchedTransaction(
+                    date = "2026-10-01",
+                    merchant = "UBER *EATS",
+                    category = "Dining",
+                    amount = 28.90
+                ),
+                com.talktomyfinances.android.domain.MatchedTransaction(
+                    date = "2026-09-29",
+                    merchant = "UBER *EATS",
+                    category = "Dining",
+                    amount = 31.40
+                )
+            ),
+            spec = FinancialQuerySpec(
+                targetMetric = TargetMetric.TRANSACTION_LIST,
+                includedMerchants = listOf("UBER *EATS")
+            )
+        )
+        voiceManager.cardFlow.tryEmit(
+            VisualCard(
+                cardType = LiveVoiceRepositoryImpl.TRANSACTION_LIST_CARD_TYPE,
+                title = "UBER *EATS",
+                totalAmount = 94.07,
+                timeframe = "THIS_PAY_CYCLE",
+                items = emptyList(),
+                auditReceipt = uberReceipt,
+                caption = "Pulling up your three Uber Eats orders from this pay cycle:"
+            )
+        )
+
+        val msg4 = chatRepo.messages.last()
+        assertTrue(msg4.text.startsWith("Pulling up your three Uber Eats orders from this pay cycle:"))
+        assertTrue(msg4.text.contains("• 2026-10-04 — UBER *EATS: $33.77"))
+        assertTrue(msg4.text.contains("• 2026-10-01 — UBER *EATS: $28.90"))
+        assertTrue(msg4.text.contains("• 2026-09-29 — UBER *EATS: $31.40"))
+        org.junit.Assert.assertNull(msg4.visualCard)
+        assertNotNull(msg4.auditReceipt)
+
+        // Event 5: Category breakdown with AI-generated contextual caption
+        voiceManager.cardFlow.tryEmit(
+            VisualCard(
+                cardType = "category_breakdown",
+                title = "Dining",
+                totalAmount = 158.02,
+                timeframe = "THIS_PAY_CYCLE",
+                items = listOf(VisualCardItem(category = "UBER *EATS", amount = 94.07)),
+                caption = "Let's look at how your takeaway spend splits across delivery apps this fortnight."
+            )
+        )
+        val msg5 = chatRepo.messages.last()
+        assertEquals("Let's look at how your takeaway spend splits across delivery apps this fortnight.", msg5.text)
+        assertNotNull(msg5.visualCard)
     }
 }

@@ -31,6 +31,7 @@ enum class DenominatorStrategy {
 @Serializable
 enum class DateWindowType {
     @SerialName("THIS_WEEK") THIS_WEEK,
+    @SerialName("THIS_PAY_CYCLE") THIS_PAY_CYCLE,
     @SerialName("LAST_WEEK") LAST_WEEK,
     @SerialName("LAST_MONTH") LAST_MONTH,
     @SerialName("LAST_30_DAYS") LAST_30_DAYS,
@@ -114,6 +115,33 @@ data class AuditReceipt(
     val value: Double? = null,
     val breakdown: List<BreakdownItem> = emptyList(),
     val transactions: List<MatchedTransaction> = emptyList(),
-    val spec: FinancialQuerySpec = FinancialQuerySpec()
+    val spec: FinancialQuerySpec = FinancialQuerySpec(),
+    @SerialName("income_total") val incomeTotal: Double? = null
+) {
+    fun toReceiptTemplate(): ReceiptTemplate {
+        val nonEmptyLines = summary.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val headlineLines = mutableListOf<String>()
+        val bulletItems = mutableListOf<String>()
+
+        for (line in nonEmptyLines) {
+            when {
+                line.startsWith("•") -> bulletItems.add(line.removePrefix("•").trim())
+                line.startsWith("- ") -> bulletItems.add(line.removePrefix("- ").trim())
+                bulletItems.isEmpty() -> headlineLines.add(line)
+                else -> bulletItems.add(line)
+            }
+        }
+
+        val headline = headlineLines.joinToString(" ").ifBlank { summary.trim() }
+        return ReceiptTemplate(
+            headline = headline,
+            bullets = bulletItems
+        )
+    }
+}
+
+data class ReceiptTemplate(
+    val headline: String,
+    val bullets: List<String>
 )
 

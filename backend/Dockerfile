@@ -1,13 +1,11 @@
-# Container image for the Cloud Run deployment of the local BankSync mock.
+# Container image for the Cloud Run deployment of the TalkToMyFinances Auditor & Curation API.
 #
-# Only the mock's runtime dependencies are needed in the image
-# (the client/auditor run elsewhere, locally or in their own service).
 # `uv sync --no-dev` skips the dev group (pytest/jsonschema); the lockfile
 # keeps the image on the exact versions the tests ran against locally.
 #
-# Build locally to smoke-test (any key works locally; unset key rejects all):
-#   docker build -t ttmf-banksync-mock .
-#   docker run --rm -p 8000:8000 -e BANKSYNC_MOCK_KEY=local-dev ttmf-banksync-mock
+# Build locally to smoke-test:
+#   docker build -t ttmf-auditor .
+#   docker run --rm -p 8000:8000 ttmf-auditor
 
 FROM ghcr.io/astral-sh/uv:python3.11-trixie-slim
 
@@ -20,7 +18,10 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY mock_banksync/ ./mock_banksync/
+COPY auditor/ ./auditor/
+COPY prompts/ ./prompts/
 
 # Cloud Run sets PORT (default 8080); fall back to 8000 for local `docker run`.
 EXPOSE 8000
-CMD uv run uvicorn mock_banksync.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD uv run uvicorn auditor.main:app --host 0.0.0.0 --port ${PORT:-8000}
+

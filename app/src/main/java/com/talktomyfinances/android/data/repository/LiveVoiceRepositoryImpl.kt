@@ -21,11 +21,22 @@ import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.talktomyfinances.android.data.datasource.AIRemoteDataSource
+import com.talktomyfinances.android.domain.AuditReceipt
+import com.talktomyfinances.android.domain.AuditorRepository
+import com.talktomyfinances.android.domain.ChatMessage
+import com.talktomyfinances.android.domain.CurrencySanitizer
+import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.talktomyfinances.android.domain.LiveVoiceManager
 import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.domain.OnboardingProfile
+import com.talktomyfinances.android.domain.ProfileStore
+import com.talktomyfinances.android.domain.TargetMetric
 import com.talktomyfinances.android.domain.TranscriptEvent
 import com.talktomyfinances.android.domain.VisualCard
+import com.talktomyfinances.android.domain.VisualCardItem
 import com.talktomyfinances.android.domain.VisualCardPayload
+import com.talktomyfinances.android.domain.VisualCardType
 import com.talktomyfinances.android.domain.VoiceSessionStatus
 import com.talktomyfinances.android.domain.VoiceState
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,6 +50,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -53,7 +65,9 @@ import javax.inject.Singleton
 class LiveVoiceRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val aiModel: FirebaseAI,
-    private val remoteConfig: FirebaseRemoteConfig
+    private val remoteConfig: FirebaseRemoteConfig,
+    private val auditorRepository: AuditorRepository,
+    private val profileStore: ProfileStore
 ) : LiveVoiceManager {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -69,8 +83,19 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     override val visualCardEvents: SharedFlow<VisualCard> = _visualCardEvents.asSharedFlow()
 
     private var liveSession: LiveSession? = null
+    @Volatile
+    private var activeUserProfile: OnboardingProfile? = null
+    @Volatile
+    private var latestReceipt: AuditReceipt? = null
 
-    override suspend fun startSession(): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun startSession(): Result<Unit> =
+        startSession(emptyList(), null, null)
+
+    override suspend fun startSession(
+        recentMessages: List<ChatMessage>,
+        previousReceipt: AuditReceipt?,
+        userProfile: OnboardingProfile?
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             _voiceState.value = VoiceState(
                 status = VoiceSessionStatus.ERROR,
@@ -82,9 +107,19 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTING)
 
         try {
+            val resolvedProfile = userProfile ?: runCatching { profileStore.load() }.getOrNull()
+            activeUserProfile = resolvedProfile
+            latestReceipt = previousReceipt
+
             val modelName = remoteConfig.getString(LIVE_MODEL_NAME_KEY).ifBlank { DEFAULT_LIVE_MODEL }
-            val systemPrompt = remoteConfig.getString(LIVE_MODEL_PROMPT_KEY)
+            val basePrompt = remoteConfig.getString(LIVE_MODEL_PROMPT_KEY)
             val voiceName = remoteConfig.getString(LIVE_MODEL_VOICE_KEY).ifBlank { DEFAULT_VOICE }
+            val fullSystemPrompt = buildLiveSystemInstruction(
+                basePrompt = basePrompt,
+                userProfile = resolvedProfile,
+                previousReceipt = previousReceipt,
+                recentMessages = recentMessages
+            )
 
             val liveConfig = liveGenerationConfig {
                 speechConfig = SpeechConfig(voice = Voice(voiceName))
@@ -97,8 +132,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val liveModel = aiModel.liveModel(
                 modelName = modelName,
                 generationConfig = liveConfig,
-                systemInstruction = content { text(systemPrompt) },
-                tools = listOf(renderVisualCardTool)
+                systemInstruction = content { text(fullSystemPrompt) },
+                tools = listOf(queryLedgerTool)
             )
 
             val session = liveModel.connect()
@@ -217,6 +252,86 @@ class LiveVoiceRepositoryImpl @Inject constructor(
 
     internal fun handleFunctionCall(call: FunctionCallPart): FunctionResponsePart {
         Log.d(TAG, "Tool call received: ${call.name} (id=${call.id}) args=${call.args}")
+        if (call.name == QUERY_LEDGER_TOOL_NAME) {
+            return try {
+                val argsJsonObj = JsonObject(call.args)
+                val chatIntro = (call.args["chat_intro"] as? JsonPrimitive)?.content
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                var spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
+                val profile = activeUserProfile ?: runCatching { runBlocking { profileStore.load() } }.getOrNull()
+                spec = AIRemoteDataSource.resolvePayCycleWindow(spec, profile)
+
+                Log.d(TAG, "LiveVoice evaluating FinancialQuerySpec via AuditorRepository: $spec")
+                val rawReceipt = runBlocking {
+                    auditorRepository.compute(spec).getOrThrow()
+                }
+                val finalReceipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
+                latestReceipt = finalReceipt
+
+                val title = AIRemoteDataSource.resolveCardTitle(finalReceipt)
+                val cardToEmit = when {
+                    finalReceipt.value != null && spec.targetMetric != TargetMetric.TRANSACTION_LIST && finalReceipt.breakdown.size > 1 -> {
+                        VisualCard(
+                            cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = finalReceipt.breakdown.map { item ->
+                                VisualCardItem(
+                                    category = item.category,
+                                    amount = item.amount,
+                                    percentage = item.percentage
+                                )
+                            },
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                    spec.targetMetric == TargetMetric.TRANSACTION_LIST || (finalReceipt.breakdown.size <= 1 && finalReceipt.transactions.isNotEmpty()) -> {
+                        VisualCard(
+                            cardType = TRANSACTION_LIST_CARD_TYPE,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = emptyList(),
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                    else -> {
+                        VisualCard(
+                            cardType = AUDIT_ONLY_CARD_TYPE,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = emptyList(),
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                }
+
+                val emitted = _visualCardEvents.tryEmit(cardToEmit)
+                Log.d(TAG, "Emitted query_ledger visual event: type='${cardToEmit.cardType}', title='${cardToEmit.title}', caption='${cardToEmit.caption}', emitted=$emitted")
+
+                val receiptJson = AIRemoteDataSource.buildReceiptJsonForToolResponse(finalReceipt)
+                val responseMap = receiptJson.toMutableMap()
+                responseMap["voice_instruction"] = JsonPrimitive(
+                    "The detailed card or bulleted transaction breakdown is now displayed on the user's screen. " +
+                    "Summarize the key takeaway in 2 to 3 natural spoken sentences and direct the user to check the details on their screen. " +
+                    "Do not read out individual transaction dates or bullet lists, and never say 'I can't read long lists'."
+                )
+                FunctionResponsePart(
+                    name = call.name,
+                    response = JsonObject(responseMap),
+                    id = call.id
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to execute query_ledger in LiveVoice: ${e.message}", e)
+                createErrorResponse(call, e.message ?: "Failed to execute query_ledger")
+            }
+        }
         if (call.name == RENDER_VISUAL_CARD_TOOL_NAME) {
             return try {
                 val card = parseVisualCardCall(call)
@@ -238,12 +353,77 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         private const val LIVE_MODEL_VOICE_KEY = "live_model_voice"
         private const val DEFAULT_LIVE_MODEL = "gemini-3.1-flash-live-preview"
         private const val DEFAULT_VOICE = "Puck"
+        const val QUERY_LEDGER_TOOL_NAME = "query_ledger"
         const val RENDER_VISUAL_CARD_TOOL_NAME = "render_visual_card"
+        const val TRANSACTION_LIST_CARD_TYPE = "transaction_list"
+        const val AUDIT_ONLY_CARD_TYPE = "audit_only"
 
         private val json = Json {
             ignoreUnknownKeys = true
             isLenient = true
             coerceInputValues = true
+        }
+
+        val LIVE_QUERY_LEDGER_PROPERTIES = AIRemoteDataSource.FINANCIAL_QUERY_SPEC_PROPERTIES + mapOf(
+            "chat_intro" to Schema.string(
+                "A brief, natural 1-sentence contextual chat message introducing the card or breakdown you are pulling up for the user, varying your phrasing naturally across turns."
+            )
+        )
+
+        val queryLedgerTool = Tool.functionDeclarations(
+            listOf(
+                FunctionDeclaration(
+                    name = QUERY_LEDGER_TOOL_NAME,
+                    description = "Executes a deterministic calculation or returns a verified transaction listing over the user's ledger and automatically renders the detailed card or bulleted breakdown on screen.",
+                    parameters = LIVE_QUERY_LEDGER_PROPERTIES
+                )
+            )
+        )
+
+        fun buildLiveSystemInstruction(
+            basePrompt: String,
+            userProfile: OnboardingProfile?,
+            previousReceipt: AuditReceipt?,
+            recentMessages: List<ChatMessage>
+        ): String {
+            val goalName = userProfile?.goal?.name ?: "MINDFUL_SPENDING"
+            val payCycleText = userProfile?.payCycle?.let { pc ->
+                "The user's pay frequency is ${pc.frequency.label} (${pc.frequency.name}) with next pay date on ${pc.nextPayDate}."
+            } ?: "The user's pay frequency is Every 2 weeks (FORTNIGHTLY) with next pay date on 2026-10-13."
+
+            return buildString {
+                append(basePrompt.trim())
+                append("\n\n")
+                append("User Goal & Pay Cycle:\n")
+                append("- The user's primary goal is: $goalName. $payCycleText\n\n")
+                append("Tool Calling Instructions for 'query_ledger' (Full Parity with Text Chat):\n")
+                append("- If the user asks any factual calculation, category breakdown, merchant breakdown, or transaction listing question, autonomously invoke the query_ledger tool with typed parameters.\n")
+                append("- Always populate 'chat_intro' with a natural, varied 1-sentence contextual message for the chat bubble that acknowledges what the user just asked for without being repetitive.\n")
+                append("- Invoking query_ledger automatically renders the detailed visual card or bulleted transaction list and Audit Receipt on the user's screen.\n")
+                append("- In your spoken voice response, do NOT try to read out the card items or bulleted transaction lines, and NEVER say meta-phrases like \"I can't read long lists\" or \"I won't read all of those out\". Simply summarize the headline takeaway in 2-3 natural spoken sentences and direct the user to read the detailed card or breakdown on their screen where applicable.\n")
+                append("- Merchant-Level Subcategory Clusters vs Broad Categories:\n")
+                append(AIRemoteDataSource.formatMerchantClustersPrompt()).append("\n")
+                append("  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n")
+                append("- Parameter Rules:\n")
+                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
+                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
+                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
+                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n")
+                append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
+                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
+                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n")
+                append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
+                if (previousReceipt != null) {
+                    append("\n")
+                    append(AIRemoteDataSource.buildPreviousReceiptContext(previousReceipt))
+                }
+                if (recentMessages.isNotEmpty()) {
+                    append("\nRecent conversation turns:\n")
+                    recentMessages.takeLast(4).forEach { msg ->
+                        append("${msg.sender.name}: ${msg.text}\n")
+                    }
+                }
+            }
         }
 
         val renderVisualCardTool = Tool.functionDeclarations(

@@ -1,0 +1,13 @@
+---
+model: "gemini-3.5-flash-lite"
+input:
+  schema:
+    goal: "string, the user's financial goal (e.g. SAVINGS)"
+    catalog: "string, JSON array of the insight chip catalog"
+---
+
+Given the user's financial goal '{{goal}}', select 3 most relevant insight chips from this catalog:
+{{catalog}}
+
+Select exactly 2 chips matching or helping their goal '{{goal}}' and 1 serendipity chip (is_serendipity=true).
+Return as a JSON array of objects with keys 'text', 'recency', 'isSerendipity', 'drilldown_prompt'.

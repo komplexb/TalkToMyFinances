@@ -49,4 +49,17 @@ class RoutingInsightsRepositoryTest {
         assertNotNull(result)
         assertEquals("Stub chip", result.chips.first().text)
     }
+
+    @Test
+    fun returnsGoldenStubChipsWhenIsDemoIsTrue() = runBlocking {
+        val repo = RoutingInsightsRepository(
+            stub = ImmediateStubRepository(),
+            urlProvider = { "http://127.0.0.1:8000" },
+            isDemoProvider = { true }
+        )
+        val result = repo.loadInsights(profile.copy(goal = FinancialGoal.SAFETY_NET))
+        assertNotNull(result)
+        assertEquals("Stub chip", result.chips.first().text)
+    }
 }
+

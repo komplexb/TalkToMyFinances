@@ -39,6 +39,7 @@ class AuditRequest(BaseModel):
     goal: Optional[str] = "SAVINGS"
     payFrequency: Optional[str] = "FORTNIGHTLY"
     nextPayDate: Optional[str] = "2026-10-15"
+    isDemo: Optional[bool] = None
 
 class QueryRequest(BaseModel):
     query: Optional[str] = None
@@ -60,7 +61,7 @@ FACT_CATALOG = [
     {"id": 10, "text": "Entertainment spend is on track for the quarter.", "recency": "this_quarter", "category": "entertainment", "is_serendipity": False, "drilldown_prompt": "How much did I spend on entertainment this quarter?"},
 ]
 
-GOLDEN_MINDFUL_SPENDING_CHIPS = [
+GOLDEN_DEMO_CHIPS = [
     InsightChip(
         text=item["text"],
         recency=item["recency"],
@@ -69,6 +70,7 @@ GOLDEN_MINDFUL_SPENDING_CHIPS = [
     )
     for item in FACT_CATALOG[:3]
 ]
+GOLDEN_MINDFUL_SPENDING_CHIPS = GOLDEN_DEMO_CHIPS
 
 def get_genai_client():
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
@@ -83,8 +85,9 @@ def get_genai_client():
 @app.post("/audit", response_model=AuditResponse)
 def run_audit(req: AuditRequest) -> AuditResponse:
     """Runs Curation Agent over the Fact Catalog to pick 3 relevant chips (2 goal + 1 serendipity)."""
-    if auditor_config.ENABLE_GOLDEN_DEMO_CHIPS and (req.goal or "").strip().upper() == "MINDFUL_SPENDING":
-        return AuditResponse(chips=GOLDEN_MINDFUL_SPENDING_CHIPS)
+    is_demo = req.isDemo if req.isDemo is not None else auditor_config.ENABLE_GOLDEN_DEMO_CHIPS
+    if is_demo:
+        return AuditResponse(chips=GOLDEN_DEMO_CHIPS)
 
     client = get_genai_client()
     if not client:
@@ -230,6 +233,8 @@ def resolve_window(
     anchor: date,
     ledger_min: date,
     ledger_max: date,
+    pay_frequency: str = "FORTNIGHTLY",
+    next_pay_date: Optional[str] = None,
 ) -> tuple[date, date]:
     w = spec.date_window
     if w.type == "CUSTOM" and w.start:
@@ -239,6 +244,26 @@ def resolve_window(
         # ISO Monday through as-of date (anchor)
         start = anchor - timedelta(days=anchor.weekday())
         end = anchor
+    elif w.type == "THIS_PAY_CYCLE":
+        # Current pay cycle window (14 days for FORTNIGHTLY, 7 for WEEKLY).
+        # Honor explicit start/end if provided on THIS_PAY_CYCLE, otherwise compute from next_pay_date or anchor.
+        cycle_days = _resolve_pay_cycle_days(pay_frequency)
+        if w.start:
+            start = _parse_date(w.start)
+            end = _parse_date(w.end) if w.end else anchor
+        elif next_pay_date:
+            try:
+                npd = _parse_date(next_pay_date)
+                cand_start = npd - timedelta(days=cycle_days)
+                cand_end = npd - timedelta(days=1)
+                if cand_start <= anchor:
+                    start, end = cand_start, min(cand_end, anchor)
+                else:
+                    start, end = anchor - timedelta(days=cycle_days - 1), anchor
+            except Exception:
+                start, end = anchor - timedelta(days=cycle_days - 1), anchor
+        else:
+            start, end = anchor - timedelta(days=cycle_days - 1), anchor
     elif w.type == "LAST_WEEK":
         # Prior full Monday through Sunday
         this_monday = anchor - timedelta(days=anchor.weekday())
@@ -263,6 +288,37 @@ def resolve_window(
     else:  # ALL_TIME
         start, end = ledger_min, ledger_max
     return start, end
+
+
+def _resolve_prior_window(
+    spec: FinancialQuerySpec,
+    win_start: date,
+    win_end: date,
+) -> Optional[tuple[date, date, str]]:
+    """Returns (prior_start, prior_end, label) for bounded comparison windows."""
+    w_type = spec.date_window.type
+    if w_type == "THIS_QUARTER":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = date(prior_end.year, 3 * ((prior_end.month - 1) // 3) + 1, 1)
+        return prior_start, prior_end, "prior quarter"
+    if w_type == "LAST_30_DAYS":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=29)
+        return prior_start, prior_end, "prior 30 days"
+    if w_type == "THIS_PAY_CYCLE":
+        span = max((win_end - win_start).days + 1, 1)
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=span - 1)
+        return prior_start, prior_end, "prior pay cycle"
+    if w_type == "LAST_MONTH":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end.replace(day=1)
+        return prior_start, prior_end, "prior month"
+    if w_type == "LAST_WEEK":
+        prior_end = win_start - timedelta(days=1)
+        prior_start = prior_end - timedelta(days=6)
+        return prior_start, prior_end, "prior week"
+    return None
 
 
 def _calendar_periods(
@@ -305,7 +361,7 @@ def execute_spec_compute(
     ledger_max = max(d for d, _ in dated)
     anchor = ledger_max
 
-    win_start, win_end = resolve_window(spec, anchor, ledger_min, ledger_max)
+    win_start, win_end = resolve_window(spec, anchor, ledger_min, ledger_max, pay_frequency, next_pay_date)
 
     # Ground requested entities against the ledger's actual vocabulary (gap 4):
     # matches are resolved to canonical names and echoed in the receipt.
@@ -344,6 +400,11 @@ def execute_spec_compute(
         if category in excl_c_set:
             continue
         filtered.append((d, tx))
+
+
+    # Calculate total income during the date window
+    txs_in_window = [tx for d, tx in dated if win_start <= d <= win_end]
+    income_total = sum(float(tx.get("creditAmount", 0.0)) for tx in txs_in_window if str(tx.get("category", "")).strip().lower() == "income" and not _is_pending(tx))
 
     amounts = [abs(float(tx.get("amount", 0))) for _, tx in filtered]
     total = sum(amounts)
@@ -455,6 +516,65 @@ def execute_spec_compute(
             )
         )
 
+    comparison_line = ""
+    prior_win = _resolve_prior_window(spec, win_start, win_end)
+    if spec.target_metric == "TOTAL_SUM" and prior_win is not None:
+        prior_start, prior_end, prior_label = prior_win
+        prior_group_sums: Dict[str, float] = {}
+        prior_total = 0.0
+        for d, tx in dated:
+            if not (prior_start <= d <= prior_end):
+                continue
+            if spec.exclude_pending and _is_pending(tx):
+                continue
+            if spec.exclude_internal_transfers and _is_internal_transfer(tx):
+                continue
+            if not _is_spend(tx):
+                continue
+            name = _normalize(canonical_merchant(tx))
+            if spec.included_merchants and name not in inc_m_set:
+                continue
+            if name in excl_m_set:
+                continue
+            category = _normalize(str(tx.get("category", "")))
+            if spec.included_categories and category not in inc_c_set:
+                continue
+            if category in excl_c_set:
+                continue
+            amt = abs(float(tx.get("amount", 0)))
+            prior_total += amt
+            key = (
+                canonical_merchant(tx)
+                if group_by_merchant
+                else (str(tx.get("category", "")).strip() or "Uncategorized")
+            )
+            prior_group_sums[key] = prior_group_sums.get(key, 0.0) + amt
+
+        if prior_total > 0:
+            diff = round(total - prior_total, 2)
+            if diff < -0.01:
+                direction = f"${abs(diff):,.2f} lower than {prior_label} (${prior_total:,.2f})"
+            elif diff > 0.01:
+                direction = f"${abs(diff):,.2f} higher than {prior_label} (${prior_total:,.2f})"
+            else:
+                direction = f"unchanged vs {prior_label} (${prior_total:,.2f})"
+
+            all_keys = set(group_sums.keys()) | set(prior_group_sums.keys())
+            key_deltas = [
+                (k, round(group_sums.get(k, 0.0) - prior_group_sums.get(k, 0.0), 2))
+                for k in all_keys
+            ]
+            key_deltas = [
+                (k, delta) for k, delta in key_deltas if abs(delta) >= 0.01
+            ]
+            key_deltas.sort(key=lambda item: (-abs(item[1]), item[0]))
+            delta_parts = [
+                f"{k} ({'+' if delta > 0 else '-'}${abs(delta):,.2f})"
+                for k, delta in key_deltas[:3]
+            ]
+            detail_suffix = f" — {', '.join(delta_parts)}" if delta_parts else ""
+            comparison_line = f"• Comparison: {direction}{detail_suffix}\n"
+
     window_desc = f"{win_start} to {win_end} ({spec.date_window.type})"
     if spec.target_metric == "TRANSACTION_LIST":
         if matched_txs:
@@ -468,18 +588,23 @@ def execute_spec_compute(
             )
             summary = (
                 f"{core.capitalize()} ({window_desc}):\n{lines}{truncation_note}\n"
-                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+                f"• Counted: {'; '.join(counted_parts)}\n"
+                f"• Excluded: {'; '.join(exclusions)}"
             )
         else:
             summary = (
-                f"No matching transactions found ({window_desc}). "
-                f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+                f"No matching transactions found ({window_desc}).\n"
+                f"• Counted: {'; '.join(counted_parts)}\n"
+                f"• Excluded: {'; '.join(exclusions)}"
             )
     else:
         summary = (
-            f"{core.capitalize()}. Window: {window_desc}. "
-            f"Denominator: {denom_desc} ({spec.denominator_strategy}). "
-            f"Counted: {'; '.join(counted_parts)}. Excluded: {'; '.join(exclusions)}."
+            f"{core.capitalize()}.\n"
+            f"• Window: {window_desc}\n"
+            f"{comparison_line}"
+            f"• Denominator: {denom_desc} ({spec.denominator_strategy})\n"
+            f"• Counted: {'; '.join(counted_parts)}\n"
+            f"• Excluded: {'; '.join(exclusions)}"
         )
 
     return AuditReceipt(
@@ -494,6 +619,7 @@ def execute_spec_compute(
         breakdown=breakdown,
         transactions=matched_txs,
         spec=spec,
+        income_total=round(income_total, 2) if income_total > 0 else None,
     )
 
 

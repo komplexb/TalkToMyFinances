@@ -146,7 +146,7 @@ fun VisualCardView(
                         )
                         visualCard.timeframe?.let { tf ->
                             Text(
-                                text = tf,
+                                text = formatTimeframeLabel(tf),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -317,3 +317,20 @@ private fun VisualCardViewPreview() {
         }
     }
 }
+
+internal fun formatTimeframeLabel(timeframe: String): String {
+    return when (timeframe.trim().uppercase()) {
+        "THIS_PAY_CYCLE" -> "This Pay Cycle"
+        "THIS_WEEK" -> "This Week"
+        "LAST_WEEK" -> "Last Week"
+        "LAST_MONTH" -> "Last Month"
+        "LAST_30_DAYS" -> "Last 30 Days"
+        "THIS_QUARTER" -> "This Quarter"
+        "SIX_MONTHS" -> "Last 6 Months"
+        "YTD" -> "Year to Date"
+        "ALL_TIME" -> "All Time"
+        "CUSTOM" -> "Custom"
+        else -> timeframe
+    }
+}
+

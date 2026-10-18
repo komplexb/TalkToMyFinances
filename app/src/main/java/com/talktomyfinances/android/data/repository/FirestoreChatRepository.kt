@@ -97,4 +97,18 @@ class FirestoreChatRepository @Inject constructor(
             .set(data)
             .await()
     }
+
+    override suspend fun clearMessages(userId: String) {
+        val collection = firestore.collection("users")
+            .document(userId)
+            .collection("chat_history")
+        val snapshot = collection.get().await()
+        if (snapshot.isEmpty) return
+        val batch = firestore.batch()
+        for (doc in snapshot.documents) {
+            batch.delete(doc.reference)
+        }
+        batch.commit().await()
+    }
 }
+

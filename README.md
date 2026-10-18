@@ -210,26 +210,9 @@ Instead of remembering paths or individual server flags, use the root shortcuts:
 
 ## 🔍 Troubleshooting
 
-### Emulator Connection Failure ("Emulator failed to connect within 5 minutes" / Freeze)
-If the Android emulator fails to boot, freezes on launch, or gives a `failed to connect within 5 minutes` error:
+For troubleshooting instructions, fast local fixes, App Check token registration, or nuclear Gradle cache resets, see:
 
-1. **Clear Stuck Background Emulator Processes**:
-   Open Terminal on your Mac and run:
-   ```sh
-   pkill -9 qemu-system
-   pkill -9 emulator
-   adb kill-server && adb start-server
-   ```
-2. **Wipe Data and Cold Boot the Virtual Device**:
-   When an app crashes or freezes, Android Studio saves a corrupted Quick Boot snapshot that prevents future launches.
-   - In Android Studio, open **Device Manager** (right sidebar).
-   - Click the **three dots (`⋮`)** next to your emulator (e.g. `Medium Phone API 37.0`) $\rightarrow$ select **Wipe Data**.
-   - Click the **three dots (`⋮`)** again $\rightarrow$ select **Cold Boot Now**.
-
-### App Freezes / Network Errors After Pay Date Onboarding Step
-If the app errors or hangs after submitting your pay date on the onboarding screen:
-- This is caused by Firebase App Check blocking requests because your local emulator's unique debug token has not been registered in the Firebase Console yet.
-- Follow Step 3 in **Option A (Team Member Setup)** above to locate `DebugAppCheckProvider` in **Logcat** and register your debug token under **App Check > Manage debug tokens**.
+👉 **[Troubleshooting.md](Troubleshooting.md)**
 
 ---
 

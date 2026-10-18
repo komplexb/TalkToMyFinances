@@ -1,6 +1,7 @@
 package com.talktomyfinances.android.ui.onboarding
 
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.talktomyfinances.android.MainViewModel
 import com.talktomyfinances.android.data.repository.AuthRepository
 import com.talktomyfinances.android.domain.FinancialGoal
@@ -22,11 +23,12 @@ enum class OnboardingStep { GOAL, PAY_CYCLE }
 
 data class OnboardingState(
     val step: OnboardingStep = OnboardingStep.GOAL,
-    val selectedGoal: FinancialGoal? = null,
+    val isDemo: Boolean = false,
+    val selectedGoal: FinancialGoal? = if (isDemo) FinancialGoal.MINDFUL_SPENDING else null,
     val otherSelected: Boolean = false,
     val otherText: String = "",
     val frequency: PayFrequency = PayFrequency.FORTNIGHTLY,
-    val nextPayDate: String = "",
+    val nextPayDate: String = if (isDemo) "2026-10-13" else "",
     val saving: Boolean = false,
     val error: Boolean = false
 ) {
@@ -42,12 +44,19 @@ data class OnboardingState(
 class OnboardingViewModel @Inject constructor(
     private val goalResolver: GoalResolver,
     private val profileStore: ProfileStore,
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val remoteConfig: FirebaseRemoteConfig? = null
 ) : MainViewModel() {
+    private val isDemoMode: Boolean = runCatching {
+        remoteConfig?.getBoolean("is_demo") ?: true
+    }.getOrDefault(true)
+
     private val _state = MutableStateFlow(
         OnboardingState(
-            selectedGoal = FinancialGoal.MINDFUL_SPENDING,
-            nextPayDate = "2026-10-20"
+            selectedGoal = if (isDemoMode) FinancialGoal.MINDFUL_SPENDING else null,
+            frequency = PayFrequency.FORTNIGHTLY,
+            nextPayDate = "2026-10-13",
+            isDemo = isDemoMode
         )
     )
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
@@ -58,6 +67,16 @@ class OnboardingViewModel @Inject constructor(
     fun onFrequency(f: PayFrequency) = _state.update { it.copy(frequency = f) }
     fun onNextPayDate(date: String) = _state.update { it.copy(nextPayDate = date.take(10)) }
     fun back() = _state.update { it.copy(step = OnboardingStep.GOAL) }
+
+    fun reset(startStep: OnboardingStep = OnboardingStep.GOAL) {
+        _state.value = OnboardingState(
+            step = startStep,
+            selectedGoal = if (isDemoMode) FinancialGoal.MINDFUL_SPENDING else null,
+            frequency = PayFrequency.FORTNIGHTLY,
+            nextPayDate = "2026-10-13",
+            isDemo = isDemoMode
+        )
+    }
 
     fun next(onDone: () -> Unit) {
         val s = _state.value

@@ -219,7 +219,7 @@ def draft(as_of: date, seed: int, months: int) -> tuple[list[dict], list[date]]:
 
 
 def fix_takeaway_gap(rows: list[dict], as_of: date) -> None:
-    """No takeaway spend after this Tuesday, so the buffer chip is true."""
+    """No takeaway spend after this Tuesday, so the buffer chip is true, while ensuring all 3 takeaway merchants appear in the 2-week pay cycle window."""
     week = iso_week_start(as_of)
     cutoff = week + timedelta(days=1)
     if cutoff > as_of:
@@ -227,6 +227,27 @@ def fix_takeaway_gap(rows: list[dict], as_of: date) -> None:
     for row in rows:
         if row["category"] == "Dining" and row["merchantName"] in TAKEAWAY_NAMES and date.fromisoformat(row["date"]) > cutoff:
             row["date"] = cutoff.isoformat()
+
+    # Ensure the 14-day pay cycle window ending at as_of contains multi-merchant takeaway depth
+    # (UBER *EATS, DOORDASH, ALDI DELIVERY) on or before cutoff so the 2-week pay cycle demo
+    # and follow-up "let me see the ubereats transactions" are rich and useful.
+    cycle_start = as_of - timedelta(days=13)
+    in_cycle_merchants = {
+        r.get("merchantName")
+        for r in rows
+        if r["category"] == "Dining"
+        and r.get("merchantName") in TAKEAWAY_NAMES
+        and cycle_start <= date.fromisoformat(r["date"]) <= cutoff
+    }
+    if "ALDI DELIVERY" not in in_cycle_merchants:
+        d = max(cycle_start + timedelta(days=3), min(cutoff - timedelta(days=4), cutoff))
+        rows.append(make(d, "ALDI DELIVERY", -38.45, "Dining", "ALDI DELIVERY"))
+    # Add additional UBER *EATS and DOORDASH orders in the 2-week window (on or before cutoff)
+    rows.append(make(cycle_start, "UBER *EATS", -31.40, "Dining", "UBER *EATS"))
+    rows.append(make(cycle_start + timedelta(days=1), "DOORDASH", -42.50, "Dining", "DOORDASH"))
+    rows.append(make(cycle_start + timedelta(days=2), "UBER *EATS", -28.90, "Dining", "UBER *EATS"))
+    rows.sort(key=lambda r: r["date"])
+
 
 
 def fix_cafe_week(rows: list[dict], as_of: date) -> None:
@@ -301,23 +322,39 @@ def fix_utilities_quarter(rows: list[dict], as_of: date, target: float = 140.0) 
     if s_this == 0 or s_last == 0:
         return
     diff = s_last - s_this
-    if 60 <= diff <= 300:
-        return
-    # This quarter is partial, so shrink the prior quarter rather than inflating
-    # the in-progress one; fall back to scaling the current quarter if that
-    # would over-correct.
-    factor_last = (s_this + target) / s_last
-    if 0.2 <= factor_last <= 2.5:
-        for row in last_rows:
-            scale_amount(row, factor_last)
-        return
-    factor_this = (s_last - target) / s_this
-    if 0.4 <= factor_this <= 2.5:
-        for row in this_rows:
-            scale_amount(row, factor_this)
-        return
-    pool = this_rows if s_this > s_last else last_rows
-    scale_amount(max(pool, key=lambda r: abs(r["amount"])), 0.5)
+    if not (60 <= diff <= 300):
+        # This quarter is partial, so shrink the prior quarter rather than inflating
+        # the in-progress one; fall back to scaling the current quarter if that
+        # would over-correct.
+        factor_last = (s_this + target) / s_last
+        if 0.2 <= factor_last <= 2.5:
+            for row in last_rows:
+                scale_amount(row, factor_last)
+        else:
+            factor_this = (s_last - target) / s_this
+            if 0.4 <= factor_this <= 2.5:
+                for row in this_rows:
+                    scale_amount(row, factor_this)
+            else:
+                pool = this_rows if s_this > s_last else last_rows
+                scale_amount(max(pool, key=lambda r: abs(r["amount"])), 0.5)
+
+    # Ensure this quarter has all 3 utility providers (JEMEN ELECTRICITY, AGL ENERGY, TCP WATER)
+    # even when as_of is early in the quarter, preserving the exact quarterly total.
+    s_this_final = round(sum(abs(r["amount"]) for r in this_rows), 2)
+    this_merchants = {r.get("merchantName") for r in this_rows}
+    if len(this_rows) == 1 and len(this_merchants) == 1 and (this_end - this_start).days >= 7:
+        jemen_amt = round(s_this_final * 0.3449, 2)
+        agl_amt = round(s_this_final * 0.4649, 2)
+        water_amt = round(s_this_final - jemen_amt - agl_amt, 2)
+        row0 = this_rows[0]
+        row0["amount"] = -jemen_amt
+        row0["creditAmount"] = 0.0
+        row0["debitAmount"] = jemen_amt
+        rows.append(make(this_start + timedelta(days=4), "AGL ENERGY", -agl_amt, "Utilities", "AGL ENERGY"))
+        rows.append(make(this_start + timedelta(days=7), "TCP WATER", -water_amt, "Utilities", "TCP WATER"))
+        rows.sort(key=lambda r: r["date"])
+
 
 
 def fix_pay_cycles(rows: list[dict], paydays: list[date], as_of: date) -> None:
@@ -344,7 +381,8 @@ def fix_pay_cycles(rows: list[dict], paydays: list[date], as_of: date) -> None:
 
 def mark_recent_pending(rows: list[dict]) -> None:
     for row in rows[-2:]:
-        row["pending"] = True
+        if row.get("merchantName") != "SQ *CAFE NEWTOWN":
+            row["pending"] = True
 
 
 # --------------------------------------------------------------------------
@@ -360,9 +398,9 @@ def validate(rows: list[dict], paydays: list[date], as_of: date) -> dict:
     def window_net(lo: date, hi: date) -> float:
         return total(rows_between(rows, lo, hi))
 
-    # This week: cafe micro-win.
+    # This week: cafe micro-win (must be settled so default exclude_pending=True counts it).
     week_cafe = [r for r in rows_between(rows, week, day)
-                 if r["category"] == "Dining" and r["description"] not in TAKEAWAY_NAMES]
+                 if r["category"] == "Dining" and r["description"] not in TAKEAWAY_NAMES and not r["pending"]]
     cafe_week = sum(abs(r["amount"]) for r in week_cafe)
     cafe_set = set(map(id, week_cafe))
     prior = []

@@ -15,17 +15,17 @@ def mock_transactions():
 # ===========================================================================
 
 def test_happy_path_micro_win_1_cafe_this_week(mock_transactions):
-    """Micro-Win 1: Cafe spend this week ($9.50 across 1 transaction, including recent pending)."""
+    """Micro-Win 1: Cafe spend this week ($9.50 across 1 settled transaction with default exclude_pending=True)."""
     spec = FinancialQuerySpec(
         target_metric="TOTAL_SUM",
         included_merchants=["SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"],
         date_window=DateWindow(type="THIS_WEEK"),
-        exclude_pending=False,
     )
     receipt = execute_spec_compute(spec, mock_transactions)
     assert receipt.value == 9.50
     assert "across 1 transaction" in receipt.summary
     assert "THIS_WEEK" in receipt.summary
+
 
 
 def test_happy_path_micro_win_2_takeaway_buffer_this_cycle(mock_transactions):
@@ -54,7 +54,7 @@ def test_happy_path_micro_win_3_groceries_last_30_days(mock_transactions):
 
 
 def test_happy_path_micro_win_4_utilities_this_quarter(mock_transactions):
-    """Micro-Win 4: Seasonal utility bills drop this quarter ($105.83)."""
+    """Micro-Win 4: Seasonal utility bills drop this quarter ($105.83 across 3 providers vs $245.82 prior quarter)."""
     spec = FinancialQuerySpec(
         target_metric="TOTAL_SUM",
         included_categories=["Utilities"],
@@ -62,7 +62,13 @@ def test_happy_path_micro_win_4_utilities_this_quarter(mock_transactions):
     )
     receipt = execute_spec_compute(spec, mock_transactions)
     assert receipt.value == 105.83
-    assert "across 1 transaction" in receipt.summary
+    assert "across 3 transactions" in receipt.summary
+    assert "• Comparison: $139.99 lower than prior quarter ($245.82)" in receipt.summary
+    assert "AGL ENERGY (-$68.61)" in receipt.summary
+    assert "JEMEN ELECTRICITY (-$52.97)" in receipt.summary
+    assert "TCP WATER (-$18.41)" in receipt.summary
+    assert {b.category for b in receipt.breakdown} == {"AGL ENERGY", "JEMEN ELECTRICITY", "TCP WATER"}
+
 
 
 def test_happy_path_micro_win_5_six_months_subscriptions(mock_transactions):
@@ -293,4 +299,40 @@ def test_happy_path_compute_endpoint_returns_breakdown_and_transactions():
     assert data["transactions"][0]["date"] == "2026-10-09"
 
 
+def test_happy_path_this_pay_cycle_takeaway_2_week_window_and_bullets(mock_transactions):
+    """THIS_PAY_CYCLE resolves to a 2-week (14-day) window (2026-09-29 to 2026-10-12) with 3 takeaway merchants and bulleted summary."""
+    spec = FinancialQuerySpec(
+        target_metric="TOTAL_SUM",
+        included_merchants=["UBER *EATS", "DOORDASH", "ALDI DELIVERY"],
+        date_window=DateWindow(type="THIS_PAY_CYCLE"),
+    )
+    receipt = execute_spec_compute(spec, mock_transactions)
+    assert receipt.value == 158.02
+    assert receipt.income_total == 3200.0
+    assert len(receipt.breakdown) == 3
+    assert receipt.breakdown[0].category == "UBER *EATS"
+    assert receipt.breakdown[0].amount == 94.07
+    assert receipt.breakdown[0].count == 3
+    assert receipt.breakdown[1].category == "ALDI DELIVERY"
+    assert receipt.breakdown[1].amount == 38.45
+    assert receipt.breakdown[1].count == 1
+    assert receipt.breakdown[2].category == "DOORDASH"
+    assert receipt.breakdown[2].amount == 25.50
+    assert receipt.breakdown[2].count == 1
+    assert "• Window: 2026-09-29 to 2026-10-12 (THIS_PAY_CYCLE)" in receipt.summary
+    assert "• Counted: merchants: ALDI DELIVERY, DOORDASH, UBER *EATS" in receipt.summary
+    assert "• Excluded: pending transactions; internal transfers; credits, income and refunds" in receipt.summary
+
+    # Follow-up: "let me see the ubereats transactions" within THIS_PAY_CYCLE
+    followup_spec = FinancialQuerySpec(
+        target_metric="TRANSACTION_LIST",
+        included_merchants=["UBER *EATS"],
+        date_window=DateWindow(type="THIS_PAY_CYCLE"),
+    )
+    followup_receipt = execute_spec_compute(followup_spec, mock_transactions)
+    assert followup_receipt.value == 94.07
+    assert len(followup_receipt.transactions) == 3
+    assert "• 2026-10-04: UBER *EATS — $33.77" in followup_receipt.summary
+    assert "• 2026-10-01: UBER *EATS — $28.90" in followup_receipt.summary
+    assert "• 2026-09-29: UBER *EATS — $31.40" in followup_receipt.summary
 

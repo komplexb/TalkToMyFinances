@@ -10,6 +10,7 @@ class DateWindow(BaseModel):
 
     type: Literal[
         "THIS_WEEK",
+        "THIS_PAY_CYCLE",
         "LAST_WEEK",
         "LAST_MONTH",
         "LAST_30_DAYS",
@@ -102,6 +103,7 @@ class AuditReceipt(BaseModel):
     breakdown: List[BreakdownItem] = Field(default_factory=list)
     transactions: List[MatchedTransaction] = Field(default_factory=list)
     spec: FinancialQuerySpec
+    income_total: Optional[float] = None
 
 
 class InsightChip(BaseModel):
