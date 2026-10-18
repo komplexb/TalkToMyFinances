@@ -360,7 +360,7 @@ open class AIRemoteDataSource @Inject constructor(
                     )
                 }
 
-                val receiptJson = buildReceiptJsonForToolResponse(finalReceipt)
+                val receiptJson = buildReceiptJsonForToolResponse(finalReceipt, goalName)
 
                 Log.d(TAG, "Submitting tool response back to Gemini for final prose synthesis...")
                 val secondResponse = chat.sendMessage(content("user") {
@@ -674,11 +674,16 @@ open class AIRemoteDataSource @Inject constructor(
             }
         }
 
-        fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt): JsonObject {
+        fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt, goalName: String? = null): JsonObject {
             val headlineSummary = finalReceipt.summary.lines().firstOrNull { it.isNotBlank() } ?: finalReceipt.summary
+            val goalDirective = if (!goalName.isNullOrBlank()) {
+                " Provide 1-2 concise sentences of warm, encouraging goal-based coaching context that connects this finding directly to the user's primary goal ($goalName)."
+            } else {
+                " Provide 1-2 concise sentences of warm, encouraging coaching context."
+            }
             return buildJsonObject {
                 put("summary", headlineSummary)
-                put("presentation_directive", "The complete list of transactions and verified totals are already displayed on screen in the visual card. Do NOT repeat or list transaction bullets, dates, or dollar items in your text response. Provide 1-2 concise sentences of warm, encouraging coaching context.")
+                put("presentation_directive", "The complete list of transactions and verified totals are already displayed on screen in the visual card. Do NOT repeat or list transaction bullets, dates, or dollar items in your text response.$goalDirective")
                 if (finalReceipt.value != null) {
                     put("value", finalReceipt.value)
                 }

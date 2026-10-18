@@ -335,7 +335,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 val emitted = _visualCardEvents.tryEmit(cardToEmit)
                 Log.d(TAG, "Emitted query_ledger visual event: type='${cardToEmit.cardType}', title='${cardToEmit.title}', caption='${cardToEmit.caption}', emitted=$emitted")
 
-                val receiptJson = AIRemoteDataSource.buildReceiptJsonForToolResponse(finalReceipt)
+                val receiptJson = AIRemoteDataSource.buildReceiptJsonForToolResponse(finalReceipt, activeUserProfile?.goal?.name)
                 val responseMap = receiptJson.toMutableMap()
                 responseMap["voice_instruction"] = JsonPrimitive(
                     "The detailed card or bulleted transaction breakdown is now displayed on the user's screen. " +
