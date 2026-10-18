@@ -1,0 +1,67 @@
+# Cloud Build pipeline for the Auditor & Curation API -> Cloud Run.
+#
+# Submit from the REPO ROOT (the auditor image needs the repo-root prompts/
+# directory, which is not inside backend/):
+#   gcloud builds submit . \
+#     --config backend/cloudbuild.auditor.yaml \
+#     --exclude .git --exclude app --exclude docs --exclude .gradle
+#
+# Prerequisite: the GEMINI_API_KEY secret exists in the project (it does —
+# created per DEPLOY.md step 2). It enables /audit LLM curation and /query
+# freeform parsing; /compute works without it.
+#
+# Cost: min-instances is 0 (scales to zero, $0 at rest) and max-instances is
+# 1: the service is stateless (frozen on-disk dataset) and one 512 Mi
+# instance handles ~80 concurrent requests — plenty for a prototype.
+#
+# Same 2nd-gen notes as cloudbuild.yaml: ${VAR} substitution form only, and
+# $BUILD_ID (not $COMMIT_SHA) for local submits.
+
+substitutions:
+  _SERVICE: ttmf-auditor
+  _AR_REPO: ttmf
+  _REGION: australia-southeast1
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    dir: .
+    args:
+      [
+        "build",
+        "-f",
+        "backend/Dockerfile.auditor",
+        "-t",
+        "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
+        "--pull",
+        ".",
+      ]
+
+  - name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID"]
+
+  # The old gcr.io/cloud-builders/gcloud image is too stale for this deploy:
+  # it accepts --allow-unauthenticated without error but the service ends up
+  # with invoker-IAM required (403s). Use the officially recommended
+  # cloudsdktool image (requires an explicit `gcloud` entrypoint) with the
+  # current --no-invoker-iam-check flag so phones can call without IAM tokens.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      [
+        "run",
+        "deploy",
+        "${_SERVICE}",
+        "--image",
+        "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
+        "--region",
+        "${_REGION}",
+        "--memory",
+        "512Mi",
+        "--min-instances",
+        "0",
+        "--max-instances",
+        "1",
+        "--no-invoker-iam-check",
+        "--set-secrets",
+        "GEMINI_API_KEY=GEMINI_API_KEY:latest",
+      ]

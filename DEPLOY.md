@@ -76,7 +76,7 @@ gcloud run services update ttmf-banksync-mock \
 ### 3. Update Firebase Remote Config for Production
 Set the production backend URL, model configurations, voice parameters, and feature flags in the Firebase Console or via Remote Config template:
 
-1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config).
+1. Go to [Firebase Console > Remote Config](https://console.firebase.google.com/project/_/config) (or edit `remote_config.json` and run `npx -y firebase-tools@latest deploy --only remoteconfig`).
 2. Configure parameters:
    - `is_demo`: Boolean flag to enable/disable the restricted happy-path demonstration mode. Default is `true` for evaluation. Set this to `false` in the console when rolling out to general users.
    - `insights_base_url`: Your live Cloud Run URL (e.g., `https://ttmf-auditor-backend-abc123.a.run.app`). Serves the `/audit` endpoint for the Insights Screen (including the 3 verified Golden Demo Chips for `MINDFUL_SPENDING`).

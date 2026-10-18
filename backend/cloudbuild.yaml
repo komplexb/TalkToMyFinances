@@ -15,23 +15,32 @@
 # worst-case bill at a few cents an hour at full load.
 # Set a GCP budget alert (e.g. $5) before first deploy.
 #
+# Note: use the ${VAR} substitution form everywhere — Cloud Build 2nd-gen
+# does not parse the legacy $(VAR) form, so a substitution only referenced
+# via $(VAR) is treated as "unused" and the submit is rejected with
+# INVALID_ARGUMENT ("key ... is not matched in the template").
+#
 # Note: image tags use $BUILD_ID rather than $COMMIT_SHA, because COMMIT_SHA
 # is only set for trigger/repo builds and resolves to an empty string for
 # local `gcloud builds submit`. BUILD_ID is set for every build.
 #
-# NOTE: for a hackathon-prototype mock with a generated key we leave the
-# service reachable and gate it with the X-API-Key header in the app itself.
+# NOTE: for a hackathon-prototype mock with a generated key we pass
+# --allow-unauthenticated (newer gcloud defaults to IAM auth) and keep the
+# service reachable, gated by the X-API-Key header in the app itself.
 # The data served is synthetic and worthless to an attacker; if this ever
-# serves real bank data, add --no-allow-unauthenticated (and an Identity-Aware
-# Proxy policy) and pass the key as a KMS secret instead of a plain --env
-# substitution.
+# serves real bank data, drop --allow-unauthenticated (and add an
+# Identity-Aware Proxy policy) and pass the key as a KMS secret instead of
+# a plain --set-env-vars substitution.
 
 substitutions:
   _SERVICE: ttmf-banksync-mock
   _AR_REPO: ttmf
   # _MOCK_KEY is deliberately NOT given a default: a deploy that omits it
   # fails the build instead of shipping an unauthenticated endpoint.
-  REGION: australia-southeast1
+  _REGION: australia-southeast1
+  # Image tags use ${_REGION} (not ${LOCATION}) on purpose: the ttmf Artifact
+  # Registry repo lives in australia-southeast1, but 2nd-gen Cloud Build runs
+  # in `global`, so ${LOCATION} would 404 on docker push.
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -39,32 +48,34 @@ steps:
       [
         "build",
         "-t",
-        "${LOCATION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
+        "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
         "--pull",
         ".",
       ]
-    dir: backend
+    # `dir` must be relative to the workspace root, which IS backend/
+    # for `gcloud builds submit backend` — the Dockerfile sits at its top.
+    # (Only use `dir: backend` if you submit the repo root with `.`.)
 
   - name: gcr.io/cloud-builders/docker
-    args: ["push", "${LOCATION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID"]
-    dir: backend
+    args: ["push", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID"]
 
   - name: gcr.io/cloud-builders/gcloud
     args:
       [
         "run",
         "deploy",
-        "$(_SERVICE)",
+        "${_SERVICE}",
         "--image",
-        "${LOCATION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
+        "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/$_SERVICE:$BUILD_ID",
         "--region",
-        "$(REGION)",
+        "${_REGION}",
         "--memory",
         "512Mi",
         "--min-instances",
         "0",
         "--max-instances",
         "1",
-        "--env",
-        "BANKSYNC_MOCK_KEY=$(_MOCK_KEY)",
+        "--set-env-vars",
+        "BANKSYNC_MOCK_KEY=${_MOCK_KEY}",
+        "--allow-unauthenticated",
       ]

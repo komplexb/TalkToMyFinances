@@ -128,36 +128,33 @@ gcloud builds submit backend --config backend/cloudbuild.yaml `
 
 ## Deploying the auditor (ADR 0003)
 
-Same pattern as the mock — a second stateless Cloud Run service (`ttmf-auditor`):
+A second stateless Cloud Run service (`ttmf-auditor`). The image, pipeline and
+deploy are in `Dockerfile.auditor` + `cloudbuild.auditor.yaml` (they already
+exist — build + push + deploy in one submit):
 
-1. **Image.** The current `Dockerfile` copies only `mock_banksync/`. For the
-   auditor, add a variant (or an extra build stage in `cloudbuild.yaml`) that
-   copies `auditor/` + `mock_banksync/data/` (the compute path reads the
-   generated dataset from disk) and runs `uvicorn auditor.main:app`.
-2. **Secret.** Create the Gemini key as a secret, never a plain `--env`:
-
-   ```powershell
-   echo -n "<gemini-api-key>" | gcloud secrets create ttmf-gemini-key --data-file=-
-   ```
-3. **Deploy** (mirrors the mock's cloudbuild, with the secret attached):
-
-   ```powershell
-   gcloud run deploy ttmf-auditor \
-     --image <your-auditor-image> \
-     --region australia-southeast1 \
-     --min-instances 0 --max-instances 1 \
-     --secret ttmf-gemini-key:GEMINI_API_KEY
-   ```
+```powershell
+# From the REPO ROOT (the auditor image needs the repo-root prompts/ dir):
+gcloud builds submit . --config backend/cloudbuild.auditor.yaml
+```
 
 Notes:
 
 - The service works with **zero** API keys — the compute path and the
   `/audit` deterministic fallback need no LLM; the key only enables freeform
-  query parsing and LLM-assisted chip selection.
-- The app's `insights_base_url` (ADR 0004) points at this service; the Android
-  app never talks to the mock directly.
-- The dataset is a frozen snapshot, so the service never goes stale — same
-  reasoning as the mock's pinned demo clock.
+  query parsing and LLM-assisted chip selection. The pipeline mounts the
+  `GEMINI_API_KEY` secret (see DEPLOY.md step 2). Without it, `/audit`
+  returns 500 and the app falls back to stub chips.
+- The deploy step uses the `cloudsdktool` SDK image with
+  `--no-invoker-iam-check`: the phone calls these endpoints without IAM
+  tokens. Do NOT replace this with `--allow-unauthenticated` on the old
+  `cloud-builders/gcloud` image — that combination silently ships an
+  IAM-locked service (403 from the app).
+- The app's `insights_base_url` + `auditor_base_url` (ADR 0004) point at
+  **this** service; the Android app never talks to the banksync mock.
+- The dataset is a frozen snapshot (bundled `mock_banksync/data/`), so the
+  service never goes stale — same reasoning as the mock's pinned demo clock.
+- After deploying, update + publish Remote Config (`remote_config.json`):
+  set `insights_base_url` and `auditor_base_url` to the new service URL.
 
 ## Conventions
 
