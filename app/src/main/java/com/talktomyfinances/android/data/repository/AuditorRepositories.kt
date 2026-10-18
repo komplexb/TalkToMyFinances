@@ -59,7 +59,13 @@ class CloudRunAuditorRepository @Inject constructor(
                                 val receipt = json.decodeFromString(AuditReceipt.serializer(), responseText)
                                 return@withContext Result.success(receipt)
                             } else {
-                                lastException = IllegalStateException("Auditor /compute returned HTTP $code")
+                                val errBody = try {
+                                    conn.errorStream?.bufferedReader()?.readText()?.take(500)
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                android.util.Log.e("Auditor", "POST $baseUrl/compute -> HTTP $code body=$errBody")
+                                lastException = IllegalStateException("Auditor /compute returned HTTP $code: $errBody")
                             }
                         } finally {
                             conn.disconnect()
