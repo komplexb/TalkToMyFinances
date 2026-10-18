@@ -25,3 +25,5 @@ __pycache__/
 
 docs/Product/Plan.md
 backend/backend.log
+
+release-key.jks
