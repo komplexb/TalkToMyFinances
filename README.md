@@ -208,6 +208,19 @@ Instead of remembering paths or individual server flags, use the root shortcuts:
 
 ---
 
+### 4. Development Workflow: When to Run What
+
+| Scenario / Change Type | What to Run | Does it need Emulator Restart? |
+|:-----------------------|:------------|:-------------------------------|
+| **Kotlin Code & Prompts**<br>(ViewModels, Repositories, DataSource, Compose UI) | **Run 'app' (▶ / `Shift + F10`)** in Android Studio<br>*(or `./gradlew installDebug`)* | **No**. The emulator stays running; only the app process restarts with the new code. |
+| **Minor UI tweaks only**<br>(Text styles, colors, padding in Compose) | **Apply Changes and Restart Activity (⚡)** | **No**. Hot-swaps the UI in ~2 seconds without a full app relaunch. |
+| **Python Backend (`backend/`)** | Auto-reloads if `make dev` / `fastapi dev` is running; or restart the Uvicorn terminal process | **No**. Completely independent of the Android app/emulator. |
+| **Dependencies / Gradle (`build.gradle.kts`)** | **Sync Project with Gradle Files** in Android Studio | **No**. Syncs dependencies, then press **Run (▶)**. |
+| **Hardware / System Glitches**<br>(Emulator microphone stops capturing audio, ADB disconnects, or OS freeze) | **Cold Boot / Restart Emulator** | **Yes**, only when emulator audio or ADB is hung. |
+| **Physical Device App Management**<br>(If Android Studio Run/Stop button is disabled or grayed out) | Force-stop and launch via terminal:<br>`adb shell am force-stop com.talktomyfinances.android`<br>`adb shell am start -n com.talktomyfinances.android/.MainActivity` | **No**. Instantly restarts app on physical device without rebooting. |
+
+---
+
 ## 🔍 Troubleshooting
 
 For troubleshooting instructions, fast local fixes, App Check token registration, or nuclear Gradle cache resets, see:
