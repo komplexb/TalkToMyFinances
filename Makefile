@@ -13,8 +13,7 @@ help:
 	@echo "  make test-android     - Run Android unit tests"
 	@echo "  make test-backend     - Run Python backend pytest suite"
 	@echo "  make build            - Assemble Android debug build"
-	@echo "  make install          - Install debug build on device/emulator and launch MainActivity"
-	@echo "  make fresh-android    - Incrementally build, install, & launch latest code on all devices"
+	@echo "  make install-latest    - Incrementally build, install, & launch latest code on all devices"
 	@echo "  make restart          - Force-stop & cold-restart the app on all connected devices/emulators"
 	@echo "  make restart-device   - Force-stop & cold-restart the app on connected physical device(s) (Wi-Fi or USB)"
 	@echo "  make restart-emulator - Force-stop & cold-restart the app on running emulator(s)"
@@ -119,5 +118,4 @@ clear-data:
 		done; \
 	fi
 
-switch-branch: fresh-android
 
