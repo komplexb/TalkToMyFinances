@@ -1,9 +1,10 @@
 import math
+import json
 
 import pytest
 from fastapi.testclient import TestClient
 
-from auditor.main import app, build_vocabulary, execute_spec_compute, ground_terms, load_transactions
+from auditor.main import ROOT, app, build_vocabulary, execute_spec_compute, ground_terms, load_transactions
 from auditor.models import DateWindow, FinancialQuerySpec
 
 client = TestClient(app)
@@ -524,3 +525,104 @@ def test_compute_endpoint_period_average():
     assert "summary" in data
     assert "value" in data
     assert isinstance(data["value"], (int, float))
+
+
+# ---------------------------------------------------------------------------
+# Remote ledger path (auditor -> deployed BankSync over HTTP)
+# ---------------------------------------------------------------------------
+
+class FakeBankSyncClient:
+    """Stand-in for banksync.banksync_client.BankSyncClient."""
+
+    instances = 0
+    last_range = None
+    rows_to_return = None
+    failure = None
+
+    def __init__(self):
+        FakeBankSyncClient.instances += 1
+        if FakeBankSyncClient.failure:
+            raise FakeBankSyncClient.failure
+
+    def transactions(self, start, end):
+        FakeBankSyncClient.last_range = (start, end)
+        return list(FakeBankSyncClient.rows_to_return or [])
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def remote_env(monkeypatch):
+    monkeypatch.setenv("BANKSYNC_USE_REMOTE", "true")
+    monkeypatch.setenv("BANKSYNC_BASE_URL", "https://example.run.app")
+    monkeypatch.setenv("BANKSYNC_API_KEY", "test-key")
+    monkeypatch.setenv("BANKSYNC_BANK_ID", "demo")
+    monkeypatch.setenv("BANKSYNC_ACCOUNT_ID", "spending")
+    monkeypatch.setattr("banksync.banksync_client.BankSyncClient", FakeBankSyncClient)
+    FakeBankSyncClient.instances = 0
+    FakeBankSyncClient.last_range = None
+    FakeBankSyncClient.rows_to_return = [
+        {"date": "2026-01-02", "merchantName": "CAFE A", "category": "Dining",
+         "amount": -9.5, "pending": False, "type": "debit"},
+    ]
+    FakeBankSyncClient.failure = None
+    monkeypatch.setattr("auditor.main._ledger_cache", None)
+    yield
+    # Restore file-backed behaviour for anything that runs afterwards.
+    monkeypatch.delenv("BANKSYNC_USE_REMOTE", raising=False)
+    monkeypatch.setattr("auditor.main._ledger_cache", None)
+
+
+def test_load_transactions_reads_frozen_file_when_remote_disabled(monkeypatch):
+    monkeypatch.setattr("auditor.main._ledger_cache", None)
+    rows = load_transactions()
+    assert rows == json.loads((ROOT / "mock_banksync" / "data" / "transactions.json").read_text())
+
+
+def test_load_transactions_uses_banksync_when_enabled(remote_env):
+    import auditor.main as auditor_main
+
+    rows = auditor_main.load_transactions()
+    assert rows == FakeBankSyncClient.rows_to_return
+    # The request spans a wide window so the frozen dataset is fully covered.
+    assert FakeBankSyncClient.last_range == ("1970-01-01", "2099-12-31")
+
+
+def test_remote_fetch_is_cached_within_ttl(remote_env):
+    import auditor.main as auditor_main
+
+    auditor_main.load_transactions()
+    auditor_main.load_transactions()
+    assert FakeBankSyncClient.instances == 1
+
+
+def test_remote_url_present_but_gate_unset_keeps_file(monkeypatch):
+    # A bare BANKSYNC_BASE_URL (e.g. the emulator alias in a local .env) must
+    # never opt the auditor into remote fetches.
+    monkeypatch.setattr("auditor.main._ledger_cache", None)
+    monkeypatch.setenv("BANKSYNC_BASE_URL", "http://10.0.2.2:8000")
+    monkeypatch.delenv("BANKSYNC_USE_REMOTE", raising=False)
+    rows = load_transactions()
+    assert "date" in rows[0] and len(rows) > 1  # the full frozen dataset, not a 30-day slice
+
+
+def test_remote_fetch_failure_surfaces_as_502(remote_env):
+    import auditor.main as auditor_main
+
+    FakeBankSyncClient.failure = RuntimeError("connection refused")
+    with pytest.raises(auditor_main.HTTPException) as exc_info:
+        auditor_main.load_transactions()
+    assert exc_info.value.status_code == 502
+    assert "BankSync fetch" in exc_info.value.detail
+
+
+def test_compute_endpoint_uses_remote_ledger(remote_env):
+    import auditor.main as auditor_main
+
+    auditor_main._ledger_cache = None
+    payload = make_compute_payload(included_merchants=["CAFE A"])
+    response = client.post("/compute", json=payload)
+    assert response.status_code == 200
+    assert response.json()["value"] == 9.5
+    assert FakeBankSyncClient.instances == 1

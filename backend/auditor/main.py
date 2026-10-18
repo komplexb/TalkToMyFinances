@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 from difflib import get_close_matches
@@ -32,6 +33,16 @@ CURATION_TEMPLATE = "curation-template-v1-0-0"
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 TRANSACTIONS_FILE = ROOT / "mock_banksync" / "data" / "transactions.json"
+
+# Remote ledger fetch: enabled only when BANKSYNC_USE_REMOTE=true AND a
+# BANKSYNC_BASE_URL is set. The frozen on-disk file remains the fallback so
+# local dev and tests never depend on a running mock.
+LEDGER_CACHE_TTL_SECONDS = 300
+# Generous bounds: the dataset is a frozen snapshot, so a wide window returns
+# the whole ledger. Narrow via BANKSYNC_LEDGER_FROM/TO if you regenerate.
+LEDGER_FROM = os.getenv("BANKSYNC_LEDGER_FROM", "1970-01-01")
+LEDGER_TO = os.getenv("BANKSYNC_LEDGER_TO", "2099-12-31")
+_ledger_cache: tuple[float, List[Dict[str, Any]]] | None = None
 
 app = FastAPI(title="TalkToMyFinances Auditor & Curation API", version="0.1.0")
 
@@ -125,7 +136,39 @@ def run_audit(req: AuditRequest) -> AuditResponse:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Curation Agent execution failed: {str(e)}")
 
+def _banksync_remote_configured() -> bool:
+    return (
+        os.getenv("BANKSYNC_USE_REMOTE", "").strip().lower() == "true"
+        and bool(os.getenv("BANKSYNC_BASE_URL", "").strip())
+    )
+
+
+def _load_transactions_remote() -> List[Dict[str, Any]]:
+    global _ledger_cache
+    now = time.monotonic()
+    if _ledger_cache is not None and now - _ledger_cache[0] < LEDGER_CACHE_TTL_SECONDS:
+        return _ledger_cache[1]
+    from banksync.banksync_client import BankSyncClient
+
+    client = None
+    try:
+        client = BankSyncClient()
+        rows = client.transactions(LEDGER_FROM, LEDGER_TO)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"BankSync fetch from {os.getenv('BANKSYNC_BASE_URL')} failed: {e}",
+        ) from e
+    finally:
+        if client is not None:
+            client.close()
+    _ledger_cache = (now, rows)
+    return rows
+
+
 def load_transactions() -> List[Dict[str, Any]]:
+    if _banksync_remote_configured():
+        return _load_transactions_remote()
     if not TRANSACTIONS_FILE.exists():
         return []
     with open(TRANSACTIONS_FILE, "r", encoding="utf-8") as f:

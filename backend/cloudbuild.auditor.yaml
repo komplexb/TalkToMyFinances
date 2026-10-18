@@ -2,9 +2,10 @@
 #
 # Submit from the REPO ROOT (the auditor image needs the repo-root prompts/
 # directory, which is not inside backend/):
-#   gcloud builds submit . \
-#     --config backend/cloudbuild.auditor.yaml \
-#     --exclude .git --exclude app --exclude docs --exclude .gradle
+#   gcloud builds submit . --config backend/cloudbuild.auditor.yaml
+#
+# Upload size is controlled by the repo-root .gcloudignore (gcloud builds
+# submit has no --exclude flag); the build context by .dockerignore.
 #
 # Prerequisite: the GEMINI_API_KEY secret exists in the project (it does —
 # created per DEPLOY.md step 2). It enables /audit LLM curation and /query
@@ -21,6 +22,12 @@ substitutions:
   _SERVICE: ttmf-auditor
   _AR_REPO: ttmf
   _REGION: australia-southeast1
+  # Where the auditor pulls its ledger over HTTP. Defaults are empty so a
+  # plain `gcloud builds submit . --config backend/cloudbuild.auditor.yaml`
+  # keeps today's behaviour (frozen on-disk dataset). To wire it to the
+  # deployed BankSync mock, pass both, e.g.:
+  #   _BANKSYNC_URL=$(gcloud run services describe ttmf-banksync-mock --region australia-southeast1 --format 'value(status.url)')
+  #   _BANKSYNC_KEY=<the _MOCK_KEY you used when deploying ttmf-banksync-mock>
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -62,6 +69,8 @@ steps:
         "--max-instances",
         "1",
         "--no-invoker-iam-check",
+        "--set-env-vars",
+        "BANKSYNC_USE_REMOTE=true,BANKSYNC_BASE_URL=${_BANKSYNC_URL},BANKSYNC_API_KEY=${_BANKSYNC_KEY},BANKSYNC_BANK_ID=demo,BANKSYNC_ACCOUNT_ID=spending",
         "--set-secrets",
         "GEMINI_API_KEY=GEMINI_API_KEY:latest",
       ]
