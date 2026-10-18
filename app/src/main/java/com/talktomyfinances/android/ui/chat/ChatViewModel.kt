@@ -174,10 +174,17 @@ class ChatViewModel @Inject constructor(
                     }
                 )
 
+                val hasCardOrReceipt = response.auditReceipt != null || response.visualCard != null
+                val finalizedText = if (hasCardOrReceipt) {
+                    sanitizeProseForCardAttachment(response.prose)
+                } else {
+                    response.prose
+                }
+
                 val assistantMsg = ChatMessage(
                     id = partialMsgId ?: java.util.UUID.randomUUID().toString(),
                     sender = MessageSender.ASSISTANT,
-                    text = response.prose,
+                    text = finalizedText,
                     auditReceipt = response.auditReceipt,
                     visualCard = response.visualCard
                 )
@@ -224,27 +231,12 @@ class ChatViewModel @Inject constructor(
                     else ->
                         "Here is your $title."
                 }
-                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }
+                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }?.let { sanitizeProseForCardAttachment(it) }
 
                 val chatMsg = when (payload.cardType) {
                     "transaction_list" -> {
                         val receipt = payload.auditReceipt
-                        val txList = receipt?.transactions.orEmpty()
-                        val totalStr = payload.totalAmount?.let { String.format(java.util.Locale.US, "$%.2f", it) }
-                        val header = aiCaption ?: buildString {
-                            append("Here is your $title breakdown")
-                            if (timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true)) {
-                                append(" $timeframeDesc")
-                            }
-                            if (totalStr != null) {
-                                append(" ($totalStr total)")
-                            }
-                            append(":")
-                        }
-                        val bullets = txList.take(15).joinToString("\n") { tx ->
-                            "• ${tx.date} — ${tx.merchant}: $${String.format(java.util.Locale.US, "%.2f", tx.amount)}"
-                        }
-                        val text = if (bullets.isNotBlank()) "$header\n$bullets" else (aiCaption ?: receipt?.summary?.lines()?.firstOrNull() ?: defaultSummaryText)
+                        val text = aiCaption ?: defaultSummaryText
                         ChatMessage(
                             sender = MessageSender.ASSISTANT,
                             text = text,
@@ -327,6 +319,22 @@ class ChatViewModel @Inject constructor(
         super.onCleared()
         viewModelScope.launch {
             liveVoiceManager.stopSession()
+        }
+    }
+
+    companion object {
+        private val LINE_ITEM_OR_BULLET_REGEX = Regex(
+            "^\\s*([•·‣◦⁃∙●○▪▫*—–\\-+]|\\d+[\\.\\)])\\s+|^\\s*\\d{4}-\\d{2}-\\d{2}|^\\s*\\||\\d{4}-\\d{2}-\\d{2}.*(\\\$|AUD)",
+            RegexOption.IGNORE_CASE
+        )
+
+        fun sanitizeProseForCardAttachment(prose: String): String {
+            val cleanedLines = prose.lines().filterNot { line ->
+                LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(line)
+            }
+            val cleaned = cleanedLines.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
+            val nonBulletLine = prose.lines().firstOrNull { it.isNotBlank() && !LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(it) }
+            return if (cleaned.isNotBlank()) cleaned else nonBulletLine ?: "Here is your verified breakdown."
         }
     }
 }

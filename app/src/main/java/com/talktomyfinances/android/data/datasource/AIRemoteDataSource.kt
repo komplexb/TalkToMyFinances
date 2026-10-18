@@ -277,7 +277,8 @@ open class AIRemoteDataSource @Inject constructor(
                 FunctionDeclaration(
                     name = "query_ledger",
                     description = "Executes a deterministic calculation or returns a verified transaction listing over the user's ledger.",
-                    parameters = FINANCIAL_QUERY_SPEC_PROPERTIES
+                    parameters = FINANCIAL_QUERY_SPEC_PROPERTIES,
+                    optionalParameters = FINANCIAL_QUERY_SPEC_OPTIONAL_PROPERTIES
                 )
             )
         )
@@ -285,29 +286,7 @@ open class AIRemoteDataSource @Inject constructor(
         val model = aiModel.generativeModel(
             modelName = modelName,
             systemInstruction = content {
-                text(
-                    "You are an empathetic, practical financial coach in an Australian personal finance app. " +
-                    "The user's primary goal is: $goalName. " +
-                    "$payCycleText " +
-                    "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
-                    "Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms).\n\n" +
-                    "Tool Calling Instructions for 'query_ledger':\n" +
-                    "- If the user asks a factual calculation or transaction listing question, autonomously invoke the query_ledger tool with typed parameters.\n" +
-                    "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
-                    formatMerchantClustersPrompt() + "\n" +
-                    "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n" +
-                    "- Parameter Rules:\n" +
-                    "  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n" +
-                    "  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n" +
-                    "  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n" +
-                    "  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.\n" +
-                    "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
-                    "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
-                    "When target_metric is TRANSACTION_LIST or the user asks for a specific merchant's breakdown/transactions, include the dated transaction bullets (• YYYY-MM-DD — MERCHANT: \$X.XX) from the tool output. " +
-                    "If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n" +
-                    "Do NOT:\n" +
-                    formatGuidanceDoNotRulesPrompt()
-                )
+                text(buildTextSystemInstruction(goalName, payCycleText))
             },
             tools = listOf(queryLedgerTool)
         )
@@ -381,13 +360,14 @@ open class AIRemoteDataSource @Inject constructor(
                     )
                 }
 
-                val receiptJson = buildReceiptJsonForToolResponse(finalReceipt)
+                val receiptJson = buildReceiptJsonForToolResponse(finalReceipt, goalName)
 
                 Log.d(TAG, "Submitting tool response back to Gemini for final prose synthesis...")
                 val secondResponse = chat.sendMessage(content("user") {
                     part(FunctionResponsePart(functionCall.name, receiptJson))
                 })
-                finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() } ?: finalReceipt.summary
+                finalProse = secondResponse.text?.trim()?.takeIf { it.isNotBlank() }
+                    ?: (finalReceipt.summary.lines().firstOrNull { it.isNotBlank() } ?: finalReceipt.summary)
                 Log.d(TAG, "Gemini final prose synthesis complete: '$finalProse'")
             } catch (e: Exception) {
                 Log.e(TAG, "Tool execution failed: ${e.message}", e)
@@ -515,12 +495,10 @@ open class AIRemoteDataSource @Inject constructor(
                             description = "Temporal window preset or CUSTOM."
                         ),
                         "start" to Schema.string(
-                            description = "Start date YYYY-MM-DD for CUSTOM window.",
-                            nullable = true
+                            description = "Start date YYYY-MM-DD for CUSTOM window."
                         ),
                         "end" to Schema.string(
-                            description = "End date YYYY-MM-DD for CUSTOM window.",
-                            nullable = true
+                            description = "End date YYYY-MM-DD for CUSTOM window."
                         )
                     ),
                     optionalProperties = listOf("start", "end"),
@@ -538,14 +516,26 @@ open class AIRemoteDataSource @Inject constructor(
                 "exclude_internal_transfers" to Schema.boolean("Whether to exclude internal transfers."),
                 "is_out_of_spec" to Schema.boolean("True when the query asks for coaching/habits rather than a verifiable calculation or transaction listing."),
                 "out_of_spec_reason" to Schema.string(
-                    description = "One-line reason when is_out_of_spec is true.",
-                    nullable = true
+                    description = "One-line reason when is_out_of_spec is true."
                 )
             )
 
+        val FINANCIAL_QUERY_SPEC_OPTIONAL_PROPERTIES = listOf(
+            "included_merchants",
+            "excluded_merchants",
+            "included_categories",
+            "excluded_categories",
+            "temporal_grain",
+            "denominator_strategy",
+            "exclude_pending",
+            "exclude_internal_transfers",
+            "is_out_of_spec",
+            "out_of_spec_reason"
+        )
+
         val FINANCIAL_QUERY_SPEC_SCHEMA: Schema = Schema.obj(
             properties = FINANCIAL_QUERY_SPEC_PROPERTIES,
-            optionalProperties = listOf("out_of_spec_reason")
+            optionalProperties = FINANCIAL_QUERY_SPEC_OPTIONAL_PROPERTIES
         )
 
         val GUIDANCE_DO_NOT_RULES = listOf(
@@ -558,10 +548,53 @@ open class AIRemoteDataSource @Inject constructor(
             return GUIDANCE_DO_NOT_RULES.joinToString("\n") { "  - $it" }
         }
 
+        fun formatParameterRulesPrompt(): String {
+            return buildString {
+                append("  * target_metric: PERIOD_AVERAGE for 'average/typical spend', AVERAGE_TRANSACTION for 'average order amount', TRANSACTION_COUNT for 'how often/how many times', TOTAL_SUM for 'total/how much/which merchant got the most', RUN_RATE for 'if this keeps up/on track for', or TRANSACTION_LIST when asked for line items, individual transactions, or a specific single merchant's breakdown (e.g. 'Uber Eats breakdown', 'show me the Uber Eats transactions').\n")
+                append("  * date_window: set type when named ('this week' -> THIS_WEEK, 'this pay cycle' or 'this cycle' -> THIS_PAY_CYCLE, 'last week' -> LAST_WEEK, 'last month' -> LAST_MONTH, 'over the last month' or 'past 30 days' -> LAST_30_DAYS, 'this quarter' -> THIS_QUARTER, 'last 6 months' -> SIX_MONTHS, 'so far this year' -> YTD); default to ALL_TIME otherwise.\n")
+                append("  * temporal_grain: set to PAY_CYCLE when asking about pay cycle, WEEK when asking about weeks, MONTH when asking about months.\n")
+                append("  * Resolve conversational antecedents (e.g. 'that category', 'those places', 'that spend', 'what about this month?', 'show me the Uber Eats breakdown') using the immediately preceding verified calculation and recent context.")
+            }
+        }
+
         fun formatMerchantClustersPrompt(): String {
             return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->
                 val listLiteral = merchants.joinToString(separator = "\", \"", prefix = "[\"", postfix = "\"]")
                 "  * Queries for '$queryTerms' -> map to included_merchants: $listLiteral and empty included_categories."
+            }
+        }
+
+        fun buildSharedBaseToolPrompt(goalName: String): String {
+            return buildString {
+                append("Tool Calling Instructions for 'query_ledger':\n")
+                append("- Whenever the user asks any factual calculation, ranking (e.g. 'which cafe got the most money'), category breakdown, merchant breakdown, or transaction listing question, you MUST invoke the query_ledger tool FIRST before answering.\n")
+                append("- Invoking query_ledger automatically renders the detailed visual card or bulleted transaction breakdown and Audit Receipt on the user's screen.\n")
+                append("- Merchant-Level Subcategory Clusters vs Broad Categories:\n")
+                append(formatMerchantClustersPrompt()).append("\n")
+                append("  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n")
+                append("- Parameter Rules:\n")
+                append(formatParameterRulesPrompt()).append("\n")
+                append("- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n")
+                append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
+                append("- Complementary Card Presentation Rule:\n")
+                append("  * NEVER output raw data tables, transaction bullet lists (• YYYY-MM-DD), or full itemized lists in your response text. The verified card or audit receipt on screen already displays these details.\n")
+                append("  * Instead, provide 1–2 sentences of warm, encouraging takeaway focusing on the total figure, averages, behavioral context, and how it supports their goal ($goalName).\n")
+            }
+        }
+
+        fun buildTextSystemInstruction(
+            goalName: String,
+            payCycleText: String
+        ): String {
+            return buildString {
+                append("You are an empathetic, practical financial coach in an Australian personal finance app. ")
+                append("The user's primary goal is: $goalName. ")
+                append("$payCycleText ")
+                append("Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. ")
+                append("Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms).\n\n")
+                append(buildSharedBaseToolPrompt(goalName))
+                append("Do NOT:\n")
+                append(formatGuidanceDoNotRulesPrompt())
             }
         }
 
@@ -641,9 +674,16 @@ open class AIRemoteDataSource @Inject constructor(
             }
         }
 
-        fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt): JsonObject {
+        fun buildReceiptJsonForToolResponse(finalReceipt: AuditReceipt, goalName: String? = null): JsonObject {
+            val headlineSummary = finalReceipt.summary.lines().firstOrNull { it.isNotBlank() } ?: finalReceipt.summary
+            val goalDirective = if (!goalName.isNullOrBlank()) {
+                " Provide 1-2 concise sentences of warm, encouraging goal-based coaching context that connects this finding directly to the user's primary goal ($goalName)."
+            } else {
+                " Provide 1-2 concise sentences of warm, encouraging coaching context."
+            }
             return buildJsonObject {
-                put("summary", finalReceipt.summary)
+                put("summary", headlineSummary)
+                put("presentation_directive", "The complete list of transactions and verified totals are already displayed on screen in the visual card. Do NOT repeat or list transaction bullets, dates, or dollar items in your text response.$goalDirective")
                 if (finalReceipt.value != null) {
                     put("value", finalReceipt.value)
                 }

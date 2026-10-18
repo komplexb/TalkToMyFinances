@@ -454,5 +454,62 @@ class TwoTrackChatPipelineTest {
         viewModel.clearChatHistory()
         assertTrue("Expected chat repository messages to be cleared", chatRepo.messages.isEmpty())
     }
+
+    @Test
+    fun sanitizeProseForCardAttachment_stripsDuplicateBulletsAndTables() {
+        val rawProseWithBullets = """
+            Here is your dining breakdown for this month. You've spent $150 across 3 visits.
+            • 2026-03-01 — CAFE: $4.50
+            • 2026-03-05 — DINER: $45.50
+            - 2026-03-10 — RESTAURANT: $100.00
+            | Date | Merchant | Amount |
+            | 2026-03-01 | CAFE | $4.50 |
+            This keeps you well within your $500 monthly dining target towards your Emergency Fund.
+        """.trimIndent()
+
+        val sanitized = ChatViewModel.sanitizeProseForCardAttachment(rawProseWithBullets)
+
+        assertFalse("Expected bullet lines to be stripped", sanitized.contains("•"))
+        assertFalse("Expected dash bullet lines to be stripped", sanitized.contains("- 2026-03-10"))
+        assertFalse("Expected table lines to be stripped", sanitized.contains("| Date |"))
+        assertTrue("Expected intro to remain", sanitized.contains("Here is your dining breakdown"))
+        assertTrue("Expected goal takeaway to remain", sanitized.contains("This keeps you well within your $500 monthly dining target"))
+    }
+
+    @Test
+    fun sharedBaseToolPrompt_containsComplementaryCardPresentationRule() {
+        val prompt = com.talktomyfinances.android.data.datasource.AIRemoteDataSource.buildSharedBaseToolPrompt("Emergency Fund")
+        assertTrue(prompt.contains("Complementary Card Presentation Rule"))
+        assertTrue(prompt.contains("NEVER output raw data tables, transaction bullet lists"))
+        assertTrue(prompt.contains("Emergency Fund"))
+    }
+
+    @Test
+    fun sanitizeProseForCardAttachment_completelyDropsAglEnergyTransactionBulletsAndMiddleDots_retainingOnlyCoaching() {
+        val rawGeminiOutput = """
+            • 2026-05-15 — AGL ENERGY: $103.43
+            • 2026-04-15 — AGL ENERGY: $116.84
+            • 2026-03-15 — AGL ENERGY: $116.88
+            • 2026-02-15 — AGL ENERGY: $98.61
+            • 2026-01-15 — AGL ENERGY: $86.86
+            · 2025-12-15 — AGL ENERGY: $121.53
+            · 2025-11-15 — AGL ENERGY: $131.22
+            · 2025-10-15 — AGL ENERGY: $129.28
+
+            Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.
+        """.trimIndent()
+
+        val sanitized = ChatViewModel.sanitizeProseForCardAttachment(rawGeminiOutput)
+
+        assertFalse("Expected standard bullets to be stripped", sanitized.contains("2026-05-15"))
+        assertFalse("Expected middle dot bullets to be stripped", sanitized.contains("·"))
+        assertFalse("Expected middle dot transaction date to be stripped", sanitized.contains("2025-12-15"))
+        assertFalse("Expected merchant bullets to be stripped", sanitized.contains("AGL ENERGY"))
+        assertEquals(
+            "Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.",
+            sanitized
+        )
+    }
 }
+
 

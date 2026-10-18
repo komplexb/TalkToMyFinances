@@ -190,14 +190,11 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
 
 Instead of remembering paths or individual server flags, use the root shortcuts:
 
-| Task                                 | Command                                         | Description                                                                                               |
-|:-------------------------------------|:------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
-| **Start Dev Mode**                   | `make dev` *(or `npm run dev`)*                 | Starts backend server & background ADB reverse watcher (for emulator + USB physical device).               |
-| **Start Dev (Physical Device/LAN)**  | `make dev-device` *(or `npm run dev:device`)*   | Starts backend server, prints local LAN IPs for Wi-Fi testing, & maintains ADB reverse for connected devices. |
-| **Backend Server**                   | `make backend` *(or `npm run backend`)*         | Runs the Python uvicorn backend server on port 8000.                                                     |
-| **ADB Reverse**                      | `make reverse` *(or `npm run reverse`)*         | Runs `adb reverse tcp:8000 tcp:8000` once for all connected devices/emulators.                             |
-| **Run All Tests**                    | `make test` *(or `npm run test`)*               | Executes Android unit tests and Python backend tests.                                                     |
-| **Build Android**                    | `make build` *(or `npm run build`)*             | Assembles the Android debug APK.                                                                          |
+| Task                                 | Command                                               | Description                                                                                               |
+|:-------------------------------------|:------------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
+| **Start Dev Mode**                   | `make dev` *(or `npm run dev`)*                       | Starts backend server & background ADB reverse watcher (for emulator + USB physical device).               |
+| **Fresh Build & Deploy**             | `make install-latest` *(or `npm run install-latest`)* | Compiles, installs debug APK, and force-restarts app on all connected devices.                            |
+| **Clear App Data**                   | `make clear-data` *(or `npm run clear-data`)*         | Wipes app cache/data (`pm clear`) on all connected devices.                                              |
 
 ---
 

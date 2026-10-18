@@ -15,6 +15,17 @@ Always try lightweight fixes **before** considering nuclear cache deletions. Del
 | **Stale Gradle build errors / lock files** | Stop active Gradle daemons | `./gradlew --stop` |
 | **Gradle IDE out of sync** | Sync Gradle in Android Studio | `File > Sync Project with Gradle Files` |
 
+### When to Run What
+
+| Scenario / Change Type | What to Run                                                                                    | Does it need Emulator Restart? |
+|:-----------------------|:-----------------------------------------------------------------------------------------------|:-------------------------------|
+| **Kotlin Code & Prompts**<br>(ViewModels, Repositories, DataSource, Compose UI) | **Run 'app' (▶ / `Shift + F10`)** in Android Studio<br>*(or `make install-latest`)*            | **No**. The emulator/phone stays running; only the app process restarts with the new code. |
+| **Minor UI tweaks only**<br>(Text styles, colors, padding in Compose) | **Apply Changes and Restart Activity (⚡)**                                                    | **No**. Hot-swaps the UI in ~2 seconds without a full app relaunch. |
+| **Python Backend (`backend/`)** | Auto-reloads if `make dev` / `fastapi dev` is running; or restart the Uvicorn terminal process | **No**. Completely independent of the Android app/emulator. |
+| **Dependencies / Gradle (`build.gradle.kts`)** | **Sync Project with Gradle Files** in Android Studio                                           | **No**. Syncs dependencies, then press **Run (▶)**. |
+| **Hardware / System Glitches**<br>(Emulator microphone stops capturing audio, ADB disconnects, or OS freeze) | **Cold Boot / Restart Emulator**                                                               | **Yes**, only when emulator audio or ADB is hung. |
+| **Physical Device App Management**<br>(When Android Studio Run/Stop button is disabled or grayed out) | `make restart-device` *(or `npm run restart:device`)*                                          | **No**. Automatically targets physical phone over Wi-Fi/USB and cold-restarts the app. |
+| **Emulator App Management**<br>(When emulator app process hangs or needs a quick restart) | `make restart-emulator` *(or `npm run restart:emulator`)*                                      | **No**. Automatically targets the emulator and cold-restarts the app. |
 ---
 
 ## 📱 Emulator & App Launch Issues
