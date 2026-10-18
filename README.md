@@ -190,19 +190,11 @@ Since you are a collaborator on the `talktomyfinances-app` project, you already 
 
 Instead of remembering paths or individual server flags, use the root shortcuts:
 
-| Task                                 | Command                                         | Description                                                                                               |
-|:-------------------------------------|:------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
-| **Start Dev Mode**                   | `make dev` *(or `npm run dev`)*                 | Starts backend server & background ADB reverse watcher (for emulator + USB physical device).               |
-| **Start Dev (Physical Device/LAN)**  | `make dev-device` *(or `npm run dev:device`)*   | Starts backend server, prints local LAN IPs for Wi-Fi testing, & maintains ADB reverse for connected devices. |
-| **Backend Server**                   | `make backend` *(or `npm run backend`)*         | Runs the Python uvicorn backend server on port 8000.                                                     |
-| **ADB Reverse**                      | `make reverse` *(or `npm run reverse`)*         | Runs `adb reverse tcp:8000 tcp:8000` once for all connected devices/emulators.                             |
-| **Run All Tests**                    | `make test` *(or `npm run test`)*               | Executes Android unit tests and Python backend tests.                                                     |
-| **Build Android**                    | `make build` *(or `npm run build`)*             | Assembles the Android debug APK.                                                                          |
-| **Restart App (Physical Device)**    | `make restart-device` *(or `npm run restart:device`)* | Force-stops and cold-restarts the app on connected physical phone(s) (Wi-Fi or USB).                |
-| **Restart App (Emulator)**           | `make restart-emulator` *(or `npm run restart:emulator`)* | Force-stops and cold-restarts the app on the running emulator.                                            |
-| **Restart App (All Devices)**        | `make restart` *(or `npm run restart`)*         | Force-stops and cold-restarts the app across all connected devices and emulators.                         |
-| **Fresh Build & Deploy**             | `make fresh-android` *(or `npm run fresh-android`)* | Compiles, installs debug APK, and force-restarts app on all connected devices.                            |
-| **Clear App Data**                   | `make clear-data` *(or `npm run clear-data`)*   | Wipes app cache/data (`pm clear`) on all connected devices.                                              |
+| Task                                 | Command                                               | Description                                                                                               |
+|:-------------------------------------|:------------------------------------------------------|:----------------------------------------------------------------------------------------------------------|
+| **Start Dev Mode**                   | `make dev` *(or `npm run dev`)*                       | Starts backend server & background ADB reverse watcher (for emulator + USB physical device).               |
+| **Fresh Build & Deploy**             | `make install-latest` *(or `npm run install-latest`)* | Compiles, installs debug APK, and force-restarts app on all connected devices.                            |
+| **Clear App Data**                   | `make clear-data` *(or `npm run clear-data`)*         | Wipes app cache/data (`pm clear`) on all connected devices.                                              |
 
 ---
 
@@ -210,20 +202,6 @@ Instead of remembering paths or individual server flags, use the root shortcuts:
 1. Open the project in Android Studio and run `app` on your Android Emulator or connected physical device.
 2. View real-time application logs in Android Studio **Logcat** using filter:
    `package:com.talktomyfinances.android level:error`
-
----
-
-### 4. Development Workflow: When to Run What
-
-| Scenario / Change Type | What to Run | Does it need Emulator Restart? |
-|:-----------------------|:------------|:-------------------------------|
-| **Kotlin Code & Prompts**<br>(ViewModels, Repositories, DataSource, Compose UI) | **Run 'app' (▶ / `Shift + F10`)** in Android Studio<br>*(or `make fresh-android`)* | **No**. The emulator/phone stays running; only the app process restarts with the new code. |
-| **Minor UI tweaks only**<br>(Text styles, colors, padding in Compose) | **Apply Changes and Restart Activity (⚡)** | **No**. Hot-swaps the UI in ~2 seconds without a full app relaunch. |
-| **Python Backend (`backend/`)** | Auto-reloads if `make dev` / `fastapi dev` is running; or restart the Uvicorn terminal process | **No**. Completely independent of the Android app/emulator. |
-| **Dependencies / Gradle (`build.gradle.kts`)** | **Sync Project with Gradle Files** in Android Studio | **No**. Syncs dependencies, then press **Run (▶)**. |
-| **Hardware / System Glitches**<br>(Emulator microphone stops capturing audio, ADB disconnects, or OS freeze) | **Cold Boot / Restart Emulator** | **Yes**, only when emulator audio or ADB is hung. |
-| **Physical Device App Management**<br>(When Android Studio Run/Stop button is disabled or grayed out) | `make restart-device` *(or `npm run restart:device`)* | **No**. Automatically targets physical phone over Wi-Fi/USB and cold-restarts the app. |
-| **Emulator App Management**<br>(When emulator app process hangs or needs a quick restart) | `make restart-emulator` *(or `npm run restart:emulator`)* | **No**. Automatically targets the emulator and cold-restarts the app. |
 
 ---
 

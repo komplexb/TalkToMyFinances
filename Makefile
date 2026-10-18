@@ -67,9 +67,7 @@ test-backend:
 build:
 	$(GRADLE) assembleDebug
 
-install: fresh-android
-
-fresh-android:
+install-latest:
 	@echo "Building & deploying latest Android code..."
 	$(GRADLE) installDebug
 	@DEVICES=$$("$(ADB)" devices | grep -w "device" | awk '{print $$1}'); \
