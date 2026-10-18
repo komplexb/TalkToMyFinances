@@ -286,26 +286,7 @@ open class AIRemoteDataSource @Inject constructor(
         val model = aiModel.generativeModel(
             modelName = modelName,
             systemInstruction = content {
-                text(
-                    "You are an empathetic, practical financial coach in an Australian personal finance app. " +
-                    "The user's primary goal is: $goalName. " +
-                    "$payCycleText " +
-                    "Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. " +
-                    "Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms).\n\n" +
-                    "Tool Calling Instructions for 'query_ledger':\n" +
-                    "- If the user asks a factual calculation or transaction listing question, autonomously invoke the query_ledger tool with typed parameters.\n" +
-                    "- Merchant-Level Subcategory Clusters vs Broad Categories:\n" +
-                    formatMerchantClustersPrompt() + "\n" +
-                    "  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n" +
-                    "- Parameter Rules:\n" +
-                    formatParameterRulesPrompt() + "\n" +
-                    "- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n" +
-                    "- When you receive tool output, consume it and synthesize natural, conversational English that preserves numbers accurately. " +
-                    "When target_metric is TRANSACTION_LIST or the user asks for a specific merchant's breakdown/transactions, include the dated transaction bullets (• YYYY-MM-DD — MERCHANT: \$X.XX) from the tool output. " +
-                    "If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n" +
-                    "Do NOT:\n" +
-                    formatGuidanceDoNotRulesPrompt()
-                )
+                text(buildTextSystemInstruction(goalName, payCycleText))
             },
             tools = listOf(queryLedgerTool)
         )
@@ -579,6 +560,40 @@ open class AIRemoteDataSource @Inject constructor(
             return SUBCATEGORY_MERCHANT_CLUSTERS.entries.joinToString("\n") { (queryTerms, merchants) ->
                 val listLiteral = merchants.joinToString(separator = "\", \"", prefix = "[\"", postfix = "\"]")
                 "  * Queries for '$queryTerms' -> map to included_merchants: $listLiteral and empty included_categories."
+            }
+        }
+
+        fun buildSharedBaseToolPrompt(goalName: String): String {
+            return buildString {
+                append("Tool Calling Instructions for 'query_ledger':\n")
+                append("- Whenever the user asks any factual calculation, ranking (e.g. 'which cafe got the most money'), category breakdown, merchant breakdown, or transaction listing question, you MUST invoke the query_ledger tool FIRST before answering.\n")
+                append("- Invoking query_ledger automatically renders the detailed visual card or bulleted transaction breakdown and Audit Receipt on the user's screen.\n")
+                append("- Merchant-Level Subcategory Clusters vs Broad Categories:\n")
+                append(formatMerchantClustersPrompt()).append("\n")
+                append("  * Broad queries for 'dining' or 'eating out' -> map to included_categories: [\"Dining\"] and empty included_merchants.\n")
+                append("- Parameter Rules:\n")
+                append(formatParameterRulesPrompt()).append("\n")
+                append("- If the user asks for financial coaching, habit advice, or open-ended budgeting questions, respond directly with empathetic guidance without invoking the tool.\n")
+                append("- If the tool output shows a meaningful change or savings compared to a prior period, briefly name what drove the shift and offer an encouraging, natural idea for how that win supports their goal ($goalName).\n")
+                append("- Complementary Card Presentation Rule:\n")
+                append("  * NEVER output raw data tables, transaction bullet lists (• YYYY-MM-DD), or full itemized lists in your response text. The verified card or audit receipt on screen already displays these details.\n")
+                append("  * Instead, provide 1–2 sentences of warm, encouraging takeaway focusing on the total figure, averages, behavioral context, and how it supports their goal ($goalName).\n")
+            }
+        }
+
+        fun buildTextSystemInstruction(
+            goalName: String,
+            payCycleText: String
+        ): String {
+            return buildString {
+                append("You are an empathetic, practical financial coach in an Australian personal finance app. ")
+                append("The user's primary goal is: $goalName. ")
+                append("$payCycleText ")
+                append("Respond with supportive, practical behavioral coaching in 2-3 concise, active sentences at a Grade 6-8 reading level. ")
+                append("Use Australian financial context (\$ AUD, fortnightly pay cycles, local retail terms).\n\n")
+                append(buildSharedBaseToolPrompt(goalName))
+                append("Do NOT:\n")
+                append(formatGuidanceDoNotRulesPrompt())
             }
         }
 

@@ -465,8 +465,13 @@ class HappyPathPipelineTest {
         val turn2Msg = chatRepo.messages.last()
         assertNotNull("Follow-up transaction list must stay on Track A with an AuditReceipt", turn2Msg.auditReceipt)
         assertNull("TRANSACTION_LIST should not render a duplicate bar chart VisualCard", turn2Msg.visualCard)
-        assertTrue(turn2Msg.text.contains("• 2026-10-09: STREAMY HD — $15.00"))
-        assertTrue(turn2Msg.text.contains("• 2026-09-15: NETFLIX — $9.99"))
+        // Verified fact receipt contains the full itemized transactions for the card to render
+        assertEquals(2, turn2Msg.auditReceipt?.transactions?.size)
+        assertEquals("STREAMY HD", turn2Msg.auditReceipt?.transactions?.get(0)?.merchant)
+        assertEquals("NETFLIX", turn2Msg.auditReceipt?.transactions?.get(1)?.merchant)
+        // Chat text body adheres to Complementary rule: no raw duplicate bullet lists
+        assertFalse(turn2Msg.text.contains("•"))
+        assertTrue(turn2Msg.text.contains("Here are the 11 transactions totaling $139.95"))
     }
 
     @Test

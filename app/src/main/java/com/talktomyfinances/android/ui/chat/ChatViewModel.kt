@@ -174,10 +174,17 @@ class ChatViewModel @Inject constructor(
                     }
                 )
 
+                val hasCardOrReceipt = response.auditReceipt != null || response.visualCard != null
+                val finalizedText = if (hasCardOrReceipt) {
+                    sanitizeProseForCardAttachment(response.prose)
+                } else {
+                    response.prose
+                }
+
                 val assistantMsg = ChatMessage(
                     id = partialMsgId ?: java.util.UUID.randomUUID().toString(),
                     sender = MessageSender.ASSISTANT,
-                    text = response.prose,
+                    text = finalizedText,
                     auditReceipt = response.auditReceipt,
                     visualCard = response.visualCard
                 )
@@ -224,7 +231,7 @@ class ChatViewModel @Inject constructor(
                     else ->
                         "Here is your $title."
                 }
-                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }
+                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }?.let { sanitizeProseForCardAttachment(it) }
 
                 val chatMsg = when (payload.cardType) {
                     "transaction_list" -> {
@@ -312,6 +319,20 @@ class ChatViewModel @Inject constructor(
         super.onCleared()
         viewModelScope.launch {
             liveVoiceManager.stopSession()
+        }
+    }
+
+    companion object {
+        fun sanitizeProseForCardAttachment(prose: String): String {
+            val cleanedLines = prose.lines().filterNot { line ->
+                val trimmed = line.trimStart()
+                trimmed.startsWith("•") ||
+                trimmed.startsWith("- ") ||
+                trimmed.startsWith("* ") ||
+                trimmed.startsWith("|")
+            }
+            val cleaned = cleanedLines.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
+            return if (cleaned.isNotBlank()) cleaned else prose.lines().firstOrNull { it.isNotBlank() } ?: prose
         }
     }
 }
