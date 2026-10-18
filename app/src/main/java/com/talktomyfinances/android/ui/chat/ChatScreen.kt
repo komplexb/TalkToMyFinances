@@ -234,6 +234,12 @@ fun ChatScreen(
 @Composable
 fun ChatMessageItem(message: ChatMessage) {
     val isUser = message.sender == MessageSender.USER
+    val hasCardOrReceipt = message.visualCard != null || message.auditReceipt != null
+    val displayText = if (!isUser && hasCardOrReceipt) {
+        ChatViewModel.sanitizeProseForCardAttachment(message.text)
+    } else {
+        message.text
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -256,7 +262,7 @@ fun ChatMessageItem(message: ChatMessage) {
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Text(
-                text = message.text,
+                text = displayText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (isUser) MaterialTheme.colorScheme.onPrimary
                 else MaterialTheme.colorScheme.onSurfaceVariant
