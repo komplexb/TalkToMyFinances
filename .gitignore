@@ -20,6 +20,7 @@ local.properties
 # Python backend
 backend/.venv
 backend/.env
+backend/.deploy-secrets
 __pycache__/
 .pytest_cache/
 
