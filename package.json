@@ -13,7 +13,10 @@
     "build": "make build",
     "install": "make install",
     "fresh-android": "make fresh-android",
-    "clear-data": "make clear-data"
+    "clear-data": "make clear-data",
+    "restart": "make restart",
+    "restart:device": "make restart-device",
+    "restart:emulator": "make restart-emulator"
   },
   "private": true
 }
