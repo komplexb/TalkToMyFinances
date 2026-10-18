@@ -20,8 +20,11 @@ local.properties
 # Python backend
 backend/.venv
 backend/.env
+backend/.deploy-secrets
 __pycache__/
 .pytest_cache/
 
 docs/Product/Plan.md
 backend/backend.log
+
+release-key.jks

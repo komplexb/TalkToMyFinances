@@ -9,8 +9,10 @@
 #
 # The image must contain, relative to WORKDIR /service:
 #   /service/auditor/                the FastAPI app (uvicorn auditor.main:app)
-#   /service/mock_banksync/data/     the frozen demo dataset (compute path reads
-#                                    mock_banksync/data/transactions.json from disk)
+#   /service/banksync/               BankSync HTTP client (remote ledger path)
+#   /service/mock_banksync/data/     the frozen demo dataset (fallback when
+#                                    BANKSYNC_USE_REMOTE is not set; compute
+#                                    reads mock_banksync/data/transactions.json)
 #   /prompts/                        the shared .prompt templates (repo root;
 #                                    /prompts is parents[2] of /service/auditor/)
 #
@@ -28,6 +30,7 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY backend/auditor/ ./auditor/
+COPY backend/banksync/ ./banksync/
 COPY backend/mock_banksync/data/ ./mock_banksync/data/
 COPY prompts/ /prompts/
 

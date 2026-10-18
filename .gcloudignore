@@ -1,0 +1,18 @@
+# Keeps the Cloud Build source upload lean for `gcloud builds submit .`
+# (the auditor pipeline). The image only needs backend/ and prompts/.
+# `gcloud builds submit` has no --exclude flag; it honors this file
+# (or --ignore-file) for the upload. Mirrors .dockerignore.
+.git
+app
+docs
+dist
+.gradle
+build
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+__pycache__
+.idea
+.kotlin
+*.iml
+local.properties

@@ -109,8 +109,10 @@ Add `GEMINI_API_KEY` to `.env` to enable the freeform-`query` parse path
 and deploy it to Cloud Run, yielding a public HTTPS URL like
 `https://ttmf-banksync-mock-abc123.a.run.app`.
 
-Once deployed, the auditor engine points its `BANKSYNC_BASE_URL` at that URL —
-the Android app itself only talks to Firebase, never to the mock directly.
+Once deployed, the auditor engine points at that URL: set `BANKSYNC_USE_REMOTE=true`
+with `BANKSYNC_BASE_URL` in its environment (the deploy pipeline does this via the
+`_BANKSYNC_URL` / `_BANKSYNC_KEY` substitutions in `cloudbuild.auditor.yaml`).
+The Android app itself only talks to the auditor + Firebase, never to the mock directly.
 
 ```powershell
 # 1. Generate a one-off key and keep it out of git/shell history where possible:
@@ -134,10 +136,22 @@ exist — build + push + deploy in one submit):
 
 ```powershell
 # From the REPO ROOT (the auditor image needs the repo-root prompts/ dir):
+#   — frozen on-disk dataset (default, today's behaviour):
 gcloud builds submit . --config backend/cloudbuild.auditor.yaml
+#   — live ledger from the deployed BankSync mock:
+gcloud builds submit . --config backend/cloudbuild.auditor.yaml `
+  --substitutions _BANKSYNC_URL=<ttmf-banksync-mock's run.app URL> `
+                  _BANKSYNC_KEY=<the _MOCK_KEY you deployed the mock with>
 ```
 
 Notes:
+
+- Ledger source: when `BANKSYNC_USE_REMOTE=true` and `BANKSYNC_BASE_URL` is set,
+  the auditor fetches the full ledger from the BankSync endpoint over HTTP
+  (cached 5 minutes per instance) instead of the frozen `transactions.json`;
+  a fetch failure surfaces as a 502, not silently stale numbers. With the gate
+  unset (local dev / default deploy) it reads the bundled file, so local runs
+  and tests never depend on a live mock.
 
 - The service works with **zero** API keys — the compute path and the
   `/audit` deterministic fallback need no LLM; the key only enables freeform
