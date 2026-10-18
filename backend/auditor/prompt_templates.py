@@ -13,8 +13,11 @@ from typing import Any, Dict, Tuple
 import yaml
 from jinja2 import Environment, StrictUndefined, TemplateError
 
-# backend/auditor/ -> backend/ -> repo root (prompts/ lives at the repo root).
-PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
+# backend/auditor/ -> backend/ -> repo root (prompts/ lives at repo root or /service/prompts in Docker).
+_REPO_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
+_SERVICE_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
+PROMPTS_DIR = _REPO_PROMPTS_DIR if _REPO_PROMPTS_DIR.exists() else _SERVICE_PROMPTS_DIR
+
 
 # StrictUndefined: a variable the template expects but the caller omitted
 # renders as an error instead of a silently-blank prompt.

@@ -115,6 +115,7 @@ class HappyPathPipelineTest {
     }
 
     private class FakeAIRemoteDataSource(
+        var auditorRepo: com.talktomyfinances.android.domain.AuditorRepository? = null,
         var specToReturn: FinancialQuerySpec = FinancialQuerySpec(
             targetMetric = TargetMetric.TOTAL_SUM,
             includedCategories = listOf("Dining")
@@ -126,33 +127,56 @@ class HappyPathPipelineTest {
         var lastPassedReceipt: AuditReceipt? = null
         var lastPassedMessages: List<ChatMessage> = emptyList()
         var lastPassedGoal: FinancialGoal? = null
+        var lastPassedProfile: OnboardingProfile? = null
 
-        override suspend fun parseFinancialIntent(
-            prompt: String,
-            previousReceipt: AuditReceipt?,
-            recentMessages: List<ChatMessage>
-        ): FinancialQuerySpec {
-            lastPassedPrompt = prompt
-            lastPassedReceipt = previousReceipt
-            lastPassedMessages = recentMessages
-            return specToReturn
-        }
-
-        override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
-            return judgeProseToReturn
-        }
-
-        override suspend fun generateConversationalGuidance(
+        override suspend fun sendMessage(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: FinancialGoal?
-        ): String {
+            userProfile: OnboardingProfile?,
+            onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
+        ): com.talktomyfinances.android.domain.ChatResponseResult {
             lastPassedPrompt = prompt
             lastPassedReceipt = previousReceipt
             lastPassedMessages = recentMessages
-            lastPassedGoal = userGoal
-            return guidanceTextToReturn
+            lastPassedGoal = userProfile?.goal
+            lastPassedProfile = userProfile
+
+            if (specToReturn.isOutOfSpec) {
+                return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
+            }
+
+            var receipt: AuditReceipt? = null
+            if (auditorRepo != null) {
+                receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
+            }
+
+            var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
+            if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
+                val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
+                val title = when {
+                    receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
+                    distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
+                    receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
+                    else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
+                }
+                visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
+                    cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                    title = title,
+                    totalAmount = receipt.value,
+                    items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
+                    auditReceipt = receipt,
+                    timeframe = receipt.spec.dateWindow.type.name
+                )
+            }
+
+            val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
+
+            return com.talktomyfinances.android.domain.ChatResponseResult(
+                prose = prose,
+                auditReceipt = receipt,
+                visualCard = visualCard
+            )
         }
     }
 
@@ -164,32 +188,36 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.PERIOD_AVERAGE,
-                includedMerchants = listOf("UBER *EATS"),
+                includedCategories = listOf("Dining"),
                 temporalGrain = TemporalGrain.MONTH
             ),
-            judgeProseToReturn = "You averaged $35.00 per month on Uber Eats."
+            judgeProseToReturn = "You averaged $84.50 per month on dining."
         )
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
         )
 
-        viewModel.sendMessage("What is my average uber eats monthly spend?")
+        viewModel.sendMessage("What is my average monthly dining spend?")
 
         assertEquals(2, chatRepo.messages.size)
         val assistantMsg = chatRepo.messages[1]
 
         assertEquals(MessageSender.ASSISTANT, assistantMsg.sender)
-        assertEquals("You averaged $35.00 per month on Uber Eats.", assistantMsg.text)
+        assertEquals("You averaged $84.50 per month on dining.", assistantMsg.text)
         assertNotNull("Track A must include verified AuditReceipt", assistantMsg.auditReceipt)
-        assertNotNull("Track A must include VisualCard payload", assistantMsg.visualCard)
+        assertNotNull("Track A multi-merchant breakdown must include VisualCard payload", assistantMsg.visualCard)
+        assertEquals("Dining", assistantMsg.visualCard?.title)
+        assertEquals(2, assistantMsg.visualCard?.items?.size)
+        assertEquals("UBER *EATS", assistantMsg.visualCard?.items?.get(0)?.category)
+        assertEquals("DOORDASH", assistantMsg.visualCard?.items?.get(1)?.category)
     }
 
     @Test
@@ -200,6 +228,7 @@ class HappyPathPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 isOutOfSpec = true,
                 outOfSpecReason = "Describe my spending habits and make recommendations"
@@ -210,7 +239,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -236,12 +264,11 @@ class HappyPathPipelineTest {
         val auditorRepo = StubAuditorRepository()
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
-        val fakeAI = FakeAIRemoteDataSource()
+        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -272,19 +299,28 @@ class HappyPathPipelineTest {
     }
 
     @Test
-    fun test_happy_path_golden_chip_cafe_drilldown_executes_verifiably() = runBlocking {
+    fun test_happy_path_golden_chip_cafe_drilldown_executes_verifiably_and_suppresses_single_bar_card() = runBlocking {
         val chatRepo = FakeChatRepository()
         val authRepo = FakeAuthRepository()
         val auditorRepo = FakeAuditorRepository { spec ->
             AuditReceipt(
                 summary = "You spent $9.50 across 1 transaction. Window: 2026-10-12 to 2026-10-12 (THIS_WEEK).",
                 value = 9.50,
+                breakdown = listOf(
+                    com.talktomyfinances.android.domain.BreakdownItem(
+                        category = "CORNER CAFE",
+                        amount = 9.50,
+                        percentage = 100.0,
+                        count = 1
+                    )
+                ),
                 spec = spec
             )
         }
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedMerchants = listOf("SQ *CAFE NEWTOWN", "CORNER CAFE", "BLUEBONIC COFFEE CO"),
@@ -296,7 +332,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -308,24 +343,25 @@ class HappyPathPipelineTest {
         assertEquals("You spent $9.50 on cafes this week.", assistantMsg.text)
         assertNotNull(assistantMsg.auditReceipt)
         assertEquals(9.50, assistantMsg.auditReceipt?.value ?: 0.0, 0.001)
-        assertNotNull(assistantMsg.visualCard)
-        assertEquals(9.50, assistantMsg.visualCard?.totalAmount ?: 0.0, 0.001)
+        assertNull("Single-item breakdown should render Verified Fact receipt without a 100% single-bar VisualCard", assistantMsg.visualCard)
     }
 
     @Test
-    fun test_happy_path_golden_chip_takeaway_drilldown_executes_verifiably() = runBlocking {
+    fun test_happy_path_golden_chip_takeaway_drilldown_executes_verifiably_and_suppresses_empty_card() = runBlocking {
         val chatRepo = FakeChatRepository()
         val authRepo = FakeAuthRepository()
         val auditorRepo = FakeAuditorRepository { spec ->
             AuditReceipt(
                 summary = "You spent $0.00 across 0 transactions. Window: 2026-10-12 to 2026-10-12 (THIS_WEEK).",
                 value = 0.00,
+                breakdown = emptyList(),
                 spec = spec
             )
         }
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedMerchants = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY"),
@@ -337,7 +373,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -349,8 +384,94 @@ class HappyPathPipelineTest {
         assertEquals("You spent $0.00 on takeaway this pay cycle.", assistantMsg.text)
         assertNotNull(assistantMsg.auditReceipt)
         assertEquals(0.00, assistantMsg.auditReceipt?.value ?: 0.0, 0.001)
-        assertNotNull(assistantMsg.visualCard)
-        assertEquals(0.00, assistantMsg.visualCard?.totalAmount ?: 0.0, 0.001)
+        assertNull("Empty breakdown ($0.00 spend) should render Verified Fact receipt without an empty VisualCard", assistantMsg.visualCard)
+    }
+
+    @Test
+    fun test_happy_path_subscriptions_drilldown_populates_merchant_breakdown_and_followup_transaction_list() = runBlocking {
+        val chatRepo = FakeChatRepository()
+        val authRepo = FakeAuthRepository()
+        val auditorRepo = FakeAuditorRepository { spec ->
+            if (spec.targetMetric == TargetMetric.TRANSACTION_LIST) {
+                AuditReceipt(
+                    summary = "Here are the 11 transactions totaling $139.95 (2026-05-01 to 2026-10-12 (SIX_MONTHS)):\n• 2026-10-09: STREAMY HD — $15.00\n• 2026-09-15: NETFLIX — $9.99\nCounted: categories: Subscriptions. Excluded: pending transactions; internal transfers; credits, income and refunds.",
+                    value = 139.95,
+                    breakdown = listOf(
+                        com.talktomyfinances.android.domain.BreakdownItem("STREAMY HD", 90.00, 64.3, 6),
+                        com.talktomyfinances.android.domain.BreakdownItem("NETFLIX", 49.95, 35.7, 5)
+                    ),
+                    transactions = listOf(
+                        com.talktomyfinances.android.domain.MatchedTransaction("2026-10-09", "STREAMY HD", "Subscriptions", 15.00),
+                        com.talktomyfinances.android.domain.MatchedTransaction("2026-09-15", "NETFLIX", "Subscriptions", 9.99)
+                    ),
+                    spec = spec
+                )
+            } else {
+                AuditReceipt(
+                    summary = "You spent $139.95 across 11 transactions. Window: 2026-05-01 to 2026-10-12 (SIX_MONTHS).",
+                    value = 139.95,
+                    breakdown = listOf(
+                        com.talktomyfinances.android.domain.BreakdownItem("STREAMY HD", 90.00, 64.3, 6),
+                        com.talktomyfinances.android.domain.BreakdownItem("NETFLIX", 49.95, 35.7, 5)
+                    ),
+                    transactions = listOf(
+                        com.talktomyfinances.android.domain.MatchedTransaction("2026-10-09", "STREAMY HD", "Subscriptions", 15.00),
+                        com.talktomyfinances.android.domain.MatchedTransaction("2026-09-15", "NETFLIX", "Subscriptions", 9.99)
+                    ),
+                    spec = spec
+                )
+            }
+        }
+        val voiceManager = FakeLiveVoiceManager()
+        val profileStore = FakeProfileStore()
+        val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
+            specToReturn = FinancialQuerySpec(
+                targetMetric = TargetMetric.TOTAL_SUM,
+                includedCategories = listOf("Subscriptions"),
+                dateWindow = DateWindow(DateWindowType.SIX_MONTHS)
+            ),
+            judgeProseToReturn = "You spent $139.95 across 11 subscription transactions over the last 6 months."
+        )
+
+        val viewModel = ChatViewModel(
+            chatRepository = chatRepo,
+            aiChatDataSource = fakeAI,
+            authRepository = authRepo,
+            liveVoiceManager = voiceManager,
+            profileStore = profileStore
+        )
+
+        // Turn 1: Subscriptions total + merchant breakdown VisualCard
+        viewModel.sendMessage("How much did I spend on subscriptions over the last 6 months?")
+        val turn1Msg = chatRepo.messages.last()
+        assertNotNull(turn1Msg.visualCard)
+        assertEquals("Subscriptions", turn1Msg.visualCard?.title)
+        assertEquals(2, turn1Msg.visualCard?.items?.size)
+        assertEquals("STREAMY HD", turn1Msg.visualCard?.items?.get(0)?.category)
+        assertEquals(90.00, turn1Msg.visualCard?.items?.get(0)?.amount ?: 0.0, 0.001)
+        assertEquals(64.3, turn1Msg.visualCard?.items?.get(0)?.percentage ?: 0.0, 0.001)
+        assertEquals("NETFLIX", turn1Msg.visualCard?.items?.get(1)?.category)
+        assertEquals(49.95, turn1Msg.visualCard?.items?.get(1)?.amount ?: 0.0, 0.001)
+
+        // Turn 2: Follow-up "let me see the transactions" resolves to TRANSACTION_LIST on Track A
+        fakeAI.specToReturn = FinancialQuerySpec(
+            targetMetric = TargetMetric.TRANSACTION_LIST,
+            includedCategories = listOf("Subscriptions"),
+            dateWindow = DateWindow(DateWindowType.SIX_MONTHS)
+        )
+        viewModel.sendMessage("let me see the transactions")
+
+        val turn2Msg = chatRepo.messages.last()
+        assertNotNull("Follow-up transaction list must stay on Track A with an AuditReceipt", turn2Msg.auditReceipt)
+        assertNull("TRANSACTION_LIST should not render a duplicate bar chart VisualCard", turn2Msg.visualCard)
+        // Verified fact receipt contains the full itemized transactions for the card to render
+        assertEquals(2, turn2Msg.auditReceipt?.transactions?.size)
+        assertEquals("STREAMY HD", turn2Msg.auditReceipt?.transactions?.get(0)?.merchant)
+        assertEquals("NETFLIX", turn2Msg.auditReceipt?.transactions?.get(1)?.merchant)
+        // Chat text body adheres to Complementary rule: no raw duplicate bullet lists
+        assertFalse(turn2Msg.text.contains("•"))
+        assertTrue(turn2Msg.text.contains("Here are the 11 transactions totaling $139.95"))
     }
 
     @Test
@@ -359,14 +480,19 @@ class HappyPathPipelineTest {
         val authRepo = FakeAuthRepository()
         val auditorRepo = FakeAuditorRepository { spec ->
             AuditReceipt(
-                summary = "You spent $105.83 across 1 transaction. Window: 2026-10-01 to 2026-10-12 (THIS_QUARTER).",
+                summary = "You spent $105.83 across 2 transactions. Window: 2026-10-01 to 2026-10-12 (THIS_QUARTER).",
                 value = 105.83,
+                breakdown = listOf(
+                    com.talktomyfinances.android.domain.BreakdownItem("ORIGIN ENERGY", 65.83, 62.2, 1),
+                    com.talktomyfinances.android.domain.BreakdownItem("SYDNEY WATER", 40.00, 37.8, 1)
+                ),
                 spec = spec
             )
         }
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedCategories = listOf("Utilities"),
@@ -378,7 +504,6 @@ class HappyPathPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -391,6 +516,27 @@ class HappyPathPipelineTest {
         assertNotNull(assistantMsg.auditReceipt)
         assertEquals(105.83, assistantMsg.auditReceipt?.value ?: 0.0, 0.001)
         assertNotNull(assistantMsg.visualCard)
+        assertEquals("Utilities", assistantMsg.visualCard?.title)
+        assertEquals(2, assistantMsg.visualCard?.items?.size)
+        assertEquals("ORIGIN ENERGY", assistantMsg.visualCard?.items?.get(0)?.category)
+        assertEquals("SYDNEY WATER", assistantMsg.visualCard?.items?.get(1)?.category)
+    }
+
+    @Test
+    fun test_happy_path_declarative_schema_covers_all_domain_enums() {
+        val targetMetrics = com.talktomyfinances.android.data.datasource.AIRemoteDataSource.TARGET_METRIC_VALUES
+        assertTrue(targetMetrics.contains("TRANSACTION_LIST"))
+        assertEquals(TargetMetric.entries.map { it.name }, targetMetrics)
+
+        val dateWindows = com.talktomyfinances.android.data.datasource.AIRemoteDataSource.DATE_WINDOW_TYPE_VALUES
+        assertTrue(dateWindows.contains("THIS_WEEK"))
+        assertTrue(dateWindows.contains("LAST_WEEK"))
+        assertEquals(DateWindowType.entries.map { it.name }, dateWindows)
+        assertNotNull(com.talktomyfinances.android.data.datasource.AIRemoteDataSource.FINANCIAL_QUERY_SPEC_SCHEMA)
+
+        val doNotRules = com.talktomyfinances.android.data.datasource.AIRemoteDataSource.GUIDANCE_DO_NOT_RULES
+        assertTrue(doNotRules.isNotEmpty())
+        assertTrue(com.talktomyfinances.android.data.datasource.AIRemoteDataSource.formatGuidanceDoNotRulesPrompt().contains("  - "))
     }
 
     @Test
@@ -404,4 +550,35 @@ class HappyPathPipelineTest {
         val cleanText = CurrencySanitizer.sanitize("You spent $105.83 on utility bills this quarter.")
         assertEquals("You spent $105.83 on utility bills this quarter.", cleanText)
     }
+
+    @Test
+    fun test_happy_path_onboarding_demo_defaults_to_fortnightly_and_mindful_spending() {
+        val demoState = com.talktomyfinances.android.ui.onboarding.OnboardingState(isDemo = true)
+        assertTrue(demoState.isDemo)
+        assertEquals(FinancialGoal.MINDFUL_SPENDING, demoState.selectedGoal)
+        assertEquals(PayFrequency.FORTNIGHTLY, demoState.frequency)
+        assertEquals("2026-10-13", demoState.nextPayDate)
+        assertTrue(demoState.canContinue)
+    }
+
+    @Test
+    fun test_happy_path_receipt_template_formats_headline_and_bullets() {
+        val receipt = AuditReceipt(
+            summary = "You spent $158.02 across 5 transactions.\n• Window: 2026-09-29 to 2026-10-12 (THIS_PAY_CYCLE)\n• Denominator: 2 active months\n• Counted: merchants: ALDI DELIVERY, DOORDASH, UBER *EATS\n• Excluded: pending transactions; internal transfers; credits, income and refunds",
+            value = 158.02,
+            spec = FinancialQuerySpec(
+                targetMetric = TargetMetric.TOTAL_SUM,
+                includedMerchants = listOf("UBER *EATS", "DOORDASH", "ALDI DELIVERY"),
+                dateWindow = DateWindow(DateWindowType.THIS_PAY_CYCLE)
+            )
+        )
+        val template = receipt.toReceiptTemplate()
+        assertEquals("You spent $158.02 across 5 transactions.", template.headline)
+        assertEquals(4, template.bullets.size)
+        assertEquals("Window: 2026-09-29 to 2026-10-12 (THIS_PAY_CYCLE)", template.bullets[0])
+        assertEquals("Denominator: 2 active months", template.bullets[1])
+        assertEquals("Counted: merchants: ALDI DELIVERY, DOORDASH, UBER *EATS", template.bullets[2])
+        assertEquals("Excluded: pending transactions; internal transfers; credits, income and refunds", template.bullets[3])
+    }
 }
+

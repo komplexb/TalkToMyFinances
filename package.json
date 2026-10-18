@@ -10,7 +10,12 @@
     "test": "make test",
     "test:android": "make test-android",
     "test:backend": "make test-backend",
-    "build": "make build"
+    "build": "make build",
+    "install-latest": "make install-latest",
+    "clear-data": "make clear-data",
+    "restart": "make restart",
+    "restart:device": "make restart-device",
+    "restart:emulator": "make restart-emulator"
   },
   "private": true
 }

@@ -48,6 +48,11 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.window.Dialog
+
 @Serializable
 object OnboardingRoute
 
@@ -70,6 +75,42 @@ fun OnboardingScreen(
 }
 
 @Composable
+fun OnboardingDialog(
+    onDismiss: () -> Unit,
+    onFinished: () -> Unit = onDismiss,
+    viewModel: OnboardingViewModel = hiltViewModel()
+) {
+    val state = viewModel.state.collectAsStateWithLifecycle().value
+    LaunchedEffect(Unit) {
+        viewModel.reset(OnboardingStep.GOAL)
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            OnboardingContent(
+                state = state,
+                onGoal = viewModel::selectGoal,
+                onOther = viewModel::selectOther,
+                onOtherText = viewModel::onOtherText,
+                onFrequency = viewModel::onFrequency,
+                onNextPayDate = viewModel::onNextPayDate,
+                onBack = viewModel::back,
+                onNext = {
+                    viewModel.next {
+                        onFinished()
+                        onDismiss()
+                    }
+                },
+                isDialog = true
+            )
+        }
+    }
+}
+
+@Composable
 fun OnboardingContent(
     state: OnboardingState,
     onGoal: (FinancialGoal) -> Unit = {},
@@ -78,11 +119,11 @@ fun OnboardingContent(
     onFrequency: (PayFrequency) -> Unit = {},
     onNextPayDate: (String) -> Unit = {},
     onBack: () -> Unit = {},
-    onNext: () -> Unit = {}
+    onNext: () -> Unit = {},
+    isDialog: Boolean = false
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = (if (isDialog) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -91,16 +132,29 @@ fun OnboardingContent(
             OnboardingStep.GOAL -> {
                 Text(stringResource(R.string.onboarding_goal_title), style = MaterialTheme.typography.headlineSmall)
                 FinancialGoal.entries.forEach { goal ->
-                    val isDemo = goal == FinancialGoal.MINDFUL_SPENDING
-                    val label = if (isDemo) "${goal.label} (Recommended Demo)" else "${goal.label} (Preview)"
-                    RadioRow(label, state.selectedGoal == goal, Modifier.testTag("goal_${goal.name}")) { onGoal(goal) }
+                    val isDemoGoal = goal == FinancialGoal.MINDFUL_SPENDING
+                    val label = if (isDemoGoal) "${goal.label} (Recommended Demo)" else "${goal.label} (Preview)"
+                    val enabled = !state.isDemo || isDemoGoal
+                    RadioRow(
+                        label = label,
+                        selected = state.selectedGoal == goal,
+                        modifier = Modifier.testTag("goal_${goal.name}"),
+                        enabled = enabled
+                    ) { onGoal(goal) }
                 }
-                RadioRow("${stringResource(R.string.onboarding_goal_other)} (Preview)", state.otherSelected, Modifier.testTag("goal_OTHER"), onOther)
+                RadioRow(
+                    label = "${stringResource(R.string.onboarding_goal_other)} (Preview)",
+                    selected = state.otherSelected,
+                    modifier = Modifier.testTag("goal_OTHER"),
+                    enabled = !state.isDemo,
+                    onClick = onOther
+                )
                 if (state.otherSelected) {
                     OutlinedTextField(
                         value = state.otherText,
                         onValueChange = onOtherText,
                         label = { Text(stringResource(R.string.onboarding_goal_other_hint)) },
+                        enabled = !state.isDemo,
                         modifier = Modifier.fillMaxWidth().testTag("other_text")
                     )
                 }
@@ -109,13 +163,20 @@ fun OnboardingContent(
             OnboardingStep.PAY_CYCLE -> {
                 Text(stringResource(R.string.onboarding_pay_title), style = MaterialTheme.typography.headlineSmall)
                 PayFrequency.entries.forEach { f ->
-                    RadioRow(f.label, state.frequency == f, Modifier.testTag("freq_${f.name}")) { onFrequency(f) }
+                    val enabled = !state.isDemo || f == PayFrequency.FORTNIGHTLY
+                    RadioRow(
+                        label = f.label,
+                        selected = state.frequency == f,
+                        modifier = Modifier.testTag("freq_${f.name}"),
+                        enabled = enabled
+                    ) { onFrequency(f) }
                 }
 
                 PayDatePicker(
                     nextPayDate = state.nextPayDate,
                     payDateValid = state.payDateValid,
-                    onNextPayDate = onNextPayDate
+                    onNextPayDate = onNextPayDate,
+                    enabled = !state.isDemo
                 )
 
                 if (state.error) {
@@ -141,6 +202,7 @@ private fun PayDatePicker(
     nextPayDate: String,
     payDateValid: Boolean,
     onNextPayDate: (String) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
@@ -160,9 +222,10 @@ private fun PayDatePicker(
             onValueChange = onNextPayDate,
             label = { Text(stringResource(R.string.onboarding_next_pay_date)) },
             isError = nextPayDate.isNotEmpty() && !payDateValid,
+            enabled = enabled,
             readOnly = true,
             trailingIcon = {
-                IconButton(onClick = { showDatePicker = true }) {
+                IconButton(onClick = { if (enabled) showDatePicker = true }, enabled = enabled) {
                     Icon(
                         painter = painterResource(R.drawable.ic_calendar),
                         contentDescription = "Select Date"
@@ -174,14 +237,16 @@ private fun PayDatePicker(
                 .testTag("pay_date")
         )
 
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .clickable { showDatePicker = true }
-        )
+        if (enabled) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { showDatePicker = true }
+            )
+        }
     }
 
-    if (showDatePicker) {
+    if (showDatePicker && enabled) {
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
@@ -212,15 +277,25 @@ private fun PayDatePicker(
 }
 
 @Composable
-private fun RadioRow(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun RadioRow(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RadioButton(selected = selected, onClick = null)
-        Text(label, modifier = Modifier.padding(start = 12.dp))
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
+        Text(
+            text = label,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            modifier = Modifier.padding(start = 12.dp)
+        )
     }
 }
 

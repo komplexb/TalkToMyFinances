@@ -31,7 +31,11 @@ data class InsightsResult(val chips: List<InsightChip>) {
         get() = chips.size == 3 && chips.count { it.isSerendipity } == 1
 
     companion object {
-        private val json = Json { ignoreUnknownKeys = true }
+        private val json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+        }
 
         fun parse(body: String): InsightsResult = json.decodeFromString(body)
     }

@@ -53,3 +53,7 @@ fun TalkToMyFinancesTheme(
         content = content
     )
 }
+
+object TalkToMyFinancesTheme {
+    val styles: ComponentStyles = ComponentStyles
+}

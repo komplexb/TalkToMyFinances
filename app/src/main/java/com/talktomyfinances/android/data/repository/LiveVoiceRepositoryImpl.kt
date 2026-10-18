@@ -21,11 +21,22 @@ import com.google.firebase.ai.type.Voice
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.liveGenerationConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.talktomyfinances.android.data.datasource.AIRemoteDataSource
+import com.talktomyfinances.android.domain.AuditReceipt
+import com.talktomyfinances.android.domain.AuditorRepository
+import com.talktomyfinances.android.domain.ChatMessage
+import com.talktomyfinances.android.domain.CurrencySanitizer
+import com.talktomyfinances.android.domain.FinancialQuerySpec
 import com.talktomyfinances.android.domain.LiveVoiceManager
 import com.talktomyfinances.android.domain.MessageSender
+import com.talktomyfinances.android.domain.OnboardingProfile
+import com.talktomyfinances.android.domain.ProfileStore
+import com.talktomyfinances.android.domain.TargetMetric
 import com.talktomyfinances.android.domain.TranscriptEvent
 import com.talktomyfinances.android.domain.VisualCard
+import com.talktomyfinances.android.domain.VisualCardItem
 import com.talktomyfinances.android.domain.VisualCardPayload
+import com.talktomyfinances.android.domain.VisualCardType
 import com.talktomyfinances.android.domain.VoiceSessionStatus
 import com.talktomyfinances.android.domain.VoiceState
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,6 +50,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -53,7 +65,9 @@ import javax.inject.Singleton
 class LiveVoiceRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val aiModel: FirebaseAI,
-    private val remoteConfig: FirebaseRemoteConfig
+    private val remoteConfig: FirebaseRemoteConfig,
+    private val auditorRepository: AuditorRepository,
+    private val profileStore: ProfileStore
 ) : LiveVoiceManager {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -69,22 +83,53 @@ class LiveVoiceRepositoryImpl @Inject constructor(
     override val visualCardEvents: SharedFlow<VisualCard> = _visualCardEvents.asSharedFlow()
 
     private var liveSession: LiveSession? = null
+    private val sessionMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile
+    private var activeUserProfile: OnboardingProfile? = null
+    @Volatile
+    private var latestReceipt: AuditReceipt? = null
 
-    override suspend fun startSession(): Result<Unit> = withContext(Dispatchers.IO) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            _voiceState.value = VoiceState(
-                status = VoiceSessionStatus.ERROR,
-                errorMessage = "Microphone permission is required for voice mode."
-            )
-            return@withContext Result.failure(SecurityException("Microphone permission denied"))
-        }
+    override suspend fun startSession(): Result<Unit> =
+        startSession(emptyList(), null, null)
 
-        _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTING)
-
+    override suspend fun startSession(
+        recentMessages: List<ChatMessage>,
+        previousReceipt: AuditReceipt?,
+        userProfile: OnboardingProfile?
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        sessionMutex.lock()
         try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                _voiceState.value = VoiceState(
+                    status = VoiceSessionStatus.ERROR,
+                    errorMessage = "Microphone permission is required for voice mode."
+                )
+                return@withContext Result.failure(SecurityException("Microphone permission denied"))
+            }
+
+            // Ensure any previous session is cleanly stopped before opening a new WebSocket
+            liveSession?.let { existing ->
+                Log.d(TAG, "Closing existing LiveSession before starting a new one")
+                runCatching { existing.stopAudioConversation() }
+                runCatching { existing.close() }
+                liveSession = null
+            }
+
+            _voiceState.value = VoiceState(status = VoiceSessionStatus.CONNECTING)
+
+            val resolvedProfile = userProfile ?: runCatching { profileStore.load() }.getOrNull()
+            activeUserProfile = resolvedProfile
+            latestReceipt = previousReceipt
+
             val modelName = remoteConfig.getString(LIVE_MODEL_NAME_KEY).ifBlank { DEFAULT_LIVE_MODEL }
-            val systemPrompt = remoteConfig.getString(LIVE_MODEL_PROMPT_KEY)
+            val basePrompt = remoteConfig.getString(LIVE_MODEL_PROMPT_KEY)
             val voiceName = remoteConfig.getString(LIVE_MODEL_VOICE_KEY).ifBlank { DEFAULT_VOICE }
+            val fullSystemPrompt = buildLiveSystemInstruction(
+                basePrompt = basePrompt,
+                userProfile = resolvedProfile,
+                previousReceipt = previousReceipt,
+                recentMessages = recentMessages
+            )
 
             val liveConfig = liveGenerationConfig {
                 speechConfig = SpeechConfig(voice = Voice(voiceName))
@@ -97,8 +142,8 @@ class LiveVoiceRepositoryImpl @Inject constructor(
             val liveModel = aiModel.liveModel(
                 modelName = modelName,
                 generationConfig = liveConfig,
-                systemInstruction = content { text(systemPrompt) },
-                tools = listOf(renderVisualCardTool)
+                systemInstruction = content { text(fullSystemPrompt) },
+                tools = listOf(queryLedgerTool)
             )
 
             val session = liveModel.connect()
@@ -173,10 +218,13 @@ class LiveVoiceRepositoryImpl @Inject constructor(
                 errorMessage = "Could not connect to voice service: ${e.message}"
             )
             Result.failure(e)
+        } finally {
+            sessionMutex.unlock()
         }
     }
 
     override suspend fun stopSession(): Unit = withContext(Dispatchers.IO) {
+        sessionMutex.lock()
         try {
             val active = _voiceState.value.activeTranscript
             val status = _voiceState.value.status
@@ -197,6 +245,7 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         } finally {
             liveSession = null
             _voiceState.value = VoiceState(status = VoiceSessionStatus.DISCONNECTED)
+            sessionMutex.unlock()
         }
     }
 
@@ -217,6 +266,92 @@ class LiveVoiceRepositoryImpl @Inject constructor(
 
     internal fun handleFunctionCall(call: FunctionCallPart): FunctionResponsePart {
         Log.d(TAG, "Tool call received: ${call.name} (id=${call.id}) args=${call.args}")
+        if (call.name == QUERY_LEDGER_TOOL_NAME) {
+            return try {
+                val normalizedArgs = call.args.toMutableMap()
+                val dw = normalizedArgs["date_window"]
+                if (dw is JsonPrimitive && dw.isString) {
+                    val cleanType = dw.content.trim().uppercase().replace(" ", "_")
+                    normalizedArgs["date_window"] = buildJsonObject { put("type", cleanType) }
+                }
+                val argsJsonObj = JsonObject(normalizedArgs)
+                val chatIntro = (call.args["chat_intro"] as? JsonPrimitive)?.content
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && it != "null" }
+                var spec = json.decodeFromJsonElement(FinancialQuerySpec.serializer(), argsJsonObj)
+                val profile = activeUserProfile ?: runCatching { runBlocking { profileStore.load() } }.getOrNull()
+                spec = AIRemoteDataSource.resolvePayCycleWindow(spec, profile)
+
+                Log.d(TAG, "LiveVoice evaluating FinancialQuerySpec via AuditorRepository: $spec")
+                val rawReceipt = runBlocking {
+                    auditorRepository.compute(spec).getOrThrow()
+                }
+                val finalReceipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
+                latestReceipt = finalReceipt
+
+                val title = AIRemoteDataSource.resolveCardTitle(finalReceipt)
+                val cardToEmit = when {
+                    finalReceipt.value != null && spec.targetMetric != TargetMetric.TRANSACTION_LIST && finalReceipt.breakdown.size > 1 -> {
+                        VisualCard(
+                            cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = finalReceipt.breakdown.map { item ->
+                                VisualCardItem(
+                                    category = item.category,
+                                    amount = item.amount,
+                                    percentage = item.percentage
+                                )
+                            },
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                    spec.targetMetric == TargetMetric.TRANSACTION_LIST || (finalReceipt.breakdown.size <= 1 && finalReceipt.transactions.isNotEmpty()) -> {
+                        VisualCard(
+                            cardType = TRANSACTION_LIST_CARD_TYPE,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = emptyList(),
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                    else -> {
+                        VisualCard(
+                            cardType = AUDIT_ONLY_CARD_TYPE,
+                            title = title,
+                            totalAmount = finalReceipt.value,
+                            items = emptyList(),
+                            auditReceipt = finalReceipt,
+                            timeframe = finalReceipt.spec.dateWindow.type.name,
+                            caption = chatIntro
+                        )
+                    }
+                }
+
+                val emitted = _visualCardEvents.tryEmit(cardToEmit)
+                Log.d(TAG, "Emitted query_ledger visual event: type='${cardToEmit.cardType}', title='${cardToEmit.title}', caption='${cardToEmit.caption}', emitted=$emitted")
+
+                val receiptJson = AIRemoteDataSource.buildReceiptJsonForToolResponse(finalReceipt, activeUserProfile?.goal?.name)
+                val responseMap = receiptJson.toMutableMap()
+                responseMap["voice_instruction"] = JsonPrimitive(
+                    "The detailed card or bulleted transaction breakdown is now displayed on the user's screen. " +
+                    "Directly answer the user's question in 2 to 3 natural spoken sentences using the headline numbers/top items from this tool output, and direct them to check the full breakdown on their screen. " +
+                    "Do not read out individual transaction dates or long bullet lists."
+                )
+                FunctionResponsePart(
+                    name = call.name,
+                    response = JsonObject(responseMap),
+                    id = call.id
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to execute query_ledger in LiveVoice: ${e.message}", e)
+                createErrorResponse(call, e.message ?: "Failed to execute query_ledger")
+            }
+        }
         if (call.name == RENDER_VISUAL_CARD_TOOL_NAME) {
             return try {
                 val card = parseVisualCardCall(call)
@@ -238,12 +373,79 @@ class LiveVoiceRepositoryImpl @Inject constructor(
         private const val LIVE_MODEL_VOICE_KEY = "live_model_voice"
         private const val DEFAULT_LIVE_MODEL = "gemini-3.1-flash-live-preview"
         private const val DEFAULT_VOICE = "Puck"
+        const val QUERY_LEDGER_TOOL_NAME = "query_ledger"
         const val RENDER_VISUAL_CARD_TOOL_NAME = "render_visual_card"
+        const val TRANSACTION_LIST_CARD_TYPE = "transaction_list"
+        const val AUDIT_ONLY_CARD_TYPE = "audit_only"
 
         private val json = Json {
             ignoreUnknownKeys = true
             isLenient = true
             coerceInputValues = true
+        }
+
+        val LIVE_QUERY_LEDGER_PROPERTIES = AIRemoteDataSource.FINANCIAL_QUERY_SPEC_PROPERTIES + mapOf(
+            "chat_intro" to Schema.string(
+                "A brief, natural 1-sentence contextual chat message introducing the card or breakdown you are pulling up for the user, varying your phrasing naturally across turns."
+            )
+        )
+
+        val LIVE_QUERY_LEDGER_OPTIONAL_PROPERTIES =
+            AIRemoteDataSource.FINANCIAL_QUERY_SPEC_OPTIONAL_PROPERTIES + listOf("chat_intro")
+
+        val queryLedgerTool = Tool.functionDeclarations(
+            listOf(
+                FunctionDeclaration(
+                    name = QUERY_LEDGER_TOOL_NAME,
+                    description = "Executes a deterministic calculation or returns a verified transaction listing over the user's ledger and automatically renders the detailed card or bulleted breakdown on screen.",
+                    parameters = LIVE_QUERY_LEDGER_PROPERTIES,
+                    optionalParameters = LIVE_QUERY_LEDGER_OPTIONAL_PROPERTIES
+                )
+            )
+        )
+
+        internal fun sanitizeBasePromptForQueryLedger(basePrompt: String): String {
+            return basePrompt.lines()
+                .filterNot { line ->
+                    line.contains("render_visual_card", ignoreCase = true) ||
+                        line.contains("Tool Schema Contract", ignoreCase = true)
+                }
+                .joinToString("\n")
+                .trim()
+        }
+
+        fun buildLiveSystemInstruction(
+            basePrompt: String,
+            userProfile: OnboardingProfile?,
+            previousReceipt: AuditReceipt?,
+            recentMessages: List<ChatMessage>
+        ): String {
+            val goalName = userProfile?.goal?.name ?: "MINDFUL_SPENDING"
+            val payCycleText = userProfile?.payCycle?.let { pc ->
+                "The user's pay frequency is ${pc.frequency.label} (${pc.frequency.name}) with next pay date on ${pc.nextPayDate}."
+            } ?: "The user's pay frequency is Every 2 weeks (FORTNIGHTLY) with next pay date on 2026-10-13."
+            val cleanedBasePrompt = sanitizeBasePromptForQueryLedger(basePrompt)
+
+            return buildString {
+                append(cleanedBasePrompt)
+                append("\n\n")
+                append("User Goal & Pay Cycle:\n")
+                append("- The user's primary goal is: $goalName. $payCycleText\n\n")
+                append("Voice & Screen Handoff Rules:\n")
+                append("- Populate 'chat_intro' with a natural, varied 1-sentence contextual message for the chat bubble that acknowledges what the user just asked for without being repetitive.\n")
+                append("- Only refer to the card or breakdown on the screen AFTER query_ledger has returned a result. In your spoken voice response, directly answer the user's question (e.g. naming the top merchant/category and its verified dollar amount), do NOT read out the full list of card items or bulleted transaction lines, and NEVER say meta-phrases like \"I can't read long lists\" or \"I won't read all of those out\".\n\n")
+                append(AIRemoteDataSource.buildSharedBaseToolPrompt(goalName))
+                if (previousReceipt != null) {
+                    append("\n")
+                    append(AIRemoteDataSource.buildPreviousReceiptContext(previousReceipt))
+                }
+                if (recentMessages.isNotEmpty()) {
+                    append("\nRecent conversation turns:\n")
+                    recentMessages.takeLast(4).forEach { msg ->
+                        append("${msg.sender.name}: ${msg.text}\n")
+                    }
+                }
+            }
         }
 
         val renderVisualCardTool = Tool.functionDeclarations(

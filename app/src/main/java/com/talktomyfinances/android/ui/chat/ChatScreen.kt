@@ -1,8 +1,6 @@
 package com.talktomyfinances.android.ui.chat
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,19 +13,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.style.MutableStyleState
+import androidx.compose.foundation.style.Style
+import androidx.compose.foundation.style.styleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -37,8 +36,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,13 +45,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.talktomyfinances.android.R
@@ -70,11 +65,13 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.style.ExperimentalFoundationStyleApi
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.talktomyfinances.android.domain.VoiceSessionStatus
 import com.talktomyfinances.android.domain.VoiceState
 import com.talktomyfinances.android.ui.chat.components.VoiceWaveformBar
+import com.talktomyfinances.android.ui.onboarding.OnboardingDialog
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -89,6 +86,8 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    var showOnboardingDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -108,20 +107,68 @@ fun ChatScreen(
         }
     }
 
+    if (showOnboardingDialog) {
+        OnboardingDialog(
+            onDismiss = { showOnboardingDialog = false }
+        )
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.chat_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.chat_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
-            )
+                Box {
+                    IconButton(onClick = { showOverflowMenu = true }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_more_vert),
+                            contentDescription = "More options",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Goal & Pay Cycle Settings") },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_settings),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                showOverflowMenu = false
+                                showOnboardingDialog = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Clear Chat History") },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_delete),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                showOverflowMenu = false
+                                viewModel.clearChatHistory()
+                            }
+                        )
+                    }
+                }
+            }
         },
         bottomBar = {
             ChatBottomInputBar(
@@ -187,6 +234,12 @@ fun ChatScreen(
 @Composable
 fun ChatMessageItem(message: ChatMessage) {
     val isUser = message.sender == MessageSender.USER
+    val hasCardOrReceipt = message.visualCard != null || message.auditReceipt != null
+    val displayText = if (!isUser && hasCardOrReceipt) {
+        ChatViewModel.sanitizeProseForCardAttachment(message.text)
+    } else {
+        message.text
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -209,7 +262,7 @@ fun ChatMessageItem(message: ChatMessage) {
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Text(
-                text = message.text,
+                text = displayText,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (isUser) MaterialTheme.colorScheme.onPrimary
                 else MaterialTheme.colorScheme.onSurfaceVariant
@@ -224,127 +277,112 @@ fun ChatMessageItem(message: ChatMessage) {
             }
             Spacer(modifier = Modifier.height(8.dp))
             VisualCardView(visualCard = cardWithReceipt)
-        } ?: message.auditReceipt?.let { receipt ->
-            Spacer(modifier = Modifier.height(6.dp))
-            AuditReceiptCard(receipt = receipt)
+        }
+
+        if (message.visualCard == null) {
+            message.auditReceipt?.let { receipt ->
+                Spacer(modifier = Modifier.height(6.dp))
+                AuditReceiptCard(receipt = receipt)
+            }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationStyleApi::class)
 @Composable
-fun AuditReceiptCard(receipt: AuditReceipt) {
-    var isExpanded by remember { mutableStateOf(false) }
+fun AuditReceiptCard(
+    receipt: AuditReceipt,
+    modifier: Modifier = Modifier,
+    style: Style = Style
+) {
+    val template = remember(receipt) { receipt.toReceiptTemplate() }
+    val cardStyleState = remember { MutableStyleState(null) }
+    val badgeStyleState = remember { MutableStyleState(null) }
+    val pillStyleState = remember { MutableStyleState(null) }
+    val cardContainerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+    val badgeColor = MaterialTheme.colorScheme.primary
+    val pillColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
 
-    Card(
-        modifier = Modifier
+    Column(
+        modifier = modifier
             .fillMaxWidth(0.92f)
-            .padding(top = 4.dp)
-            .animateContentSize()
-            .clickable { isExpanded = !isExpanded },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-        )
+            .styleable(
+                cardStyleState,
+                TalkToMyFinancesTheme.styles.auditReceiptCardStyle,
+                Style { background(cardContainerColor) },
+                style
+            ),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier.styleable(
+                    badgeStyleState,
+                    TalkToMyFinancesTheme.styles.auditReceiptBadgeIconStyle,
+                    Style { background(badgeColor) }
+                ),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_check),
-                            contentDescription = "Verified",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
-                    Text(
-                        text = "Verified Fact",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
-
-                Text(
-                    text = if (isExpanded) "Hide details" else "Tap for receipt",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_check),
+                    contentDescription = "Verified",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(12.dp)
                 )
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = receipt.summary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-
             receipt.value?.let { value ->
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                Box(
+                    modifier = Modifier.styleable(
+                        pillStyleState,
+                        TalkToMyFinancesTheme.styles.auditReceiptMetricPillStyle,
+                        Style { background(pillColor) }
+                    )
                 ) {
                     Text(
                         text = "Verified Metric: $${String.format("%.2f", value)}",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
+        }
 
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                Spacer(modifier = Modifier.height(8.dp))
+        if (template.headline.isNotBlank()) {
+            Text(
+                text = template.headline,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Audit Specification:",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        text = "• Target Metric: ${receipt.spec.targetMetric}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        text = "• Temporal Grain: ${receipt.spec.temporalGrain}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        text = "• Denominator Strategy: ${receipt.spec.denominatorStrategy}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    if (receipt.spec.includedMerchants.isNotEmpty()) {
+        if (template.bullets.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                template.bullets.forEach { bullet ->
+                    val bulletRowState = remember { MutableStyleState(null) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .styleable(
+                                bulletRowState,
+                                TalkToMyFinancesTheme.styles.auditReceiptBulletRowStyle
+                            ),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
-                            text = "• Included Merchants: ${receipt.spec.includedMerchants.joinToString(", ")}",
+                            text = "•",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                    }
-                    if (receipt.spec.includedCategories.isNotEmpty()) {
                         Text(
-                            text = "• Included Categories: ${receipt.spec.includedCategories.joinToString(", ")}",
+                            text = bullet,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )

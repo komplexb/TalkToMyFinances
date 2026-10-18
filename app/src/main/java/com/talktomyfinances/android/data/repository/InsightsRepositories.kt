@@ -49,7 +49,10 @@ open class StubInsightsRepository @Inject constructor() : InsightsRepository {
 }
 
 /** REST client for the Cloud Run Auditor + Curation Agent (ADR 0004). */
-class CloudRunInsightsRepository(private val baseUrl: String) : InsightsRepository {
+class CloudRunInsightsRepository(
+    private val baseUrl: String,
+    private val isDemo: Boolean = false
+) : InsightsRepository {
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult =
         withContext(Dispatchers.IO) {
             val conn = (URL("${baseUrl.trimEnd('/')}/audit").openConnection() as HttpURLConnection).apply {
@@ -60,7 +63,7 @@ class CloudRunInsightsRepository(private val baseUrl: String) : InsightsReposito
                 setRequestProperty("Content-Type", "application/json")
             }
             try {
-                val body = """{"goal":"${profile.goal.name}","payFrequency":"${profile.payCycle.frequency.name}","nextPayDate":"${profile.payCycle.nextPayDate}"}"""
+                val body = """{"goal":"${profile.goal.name}","payFrequency":"${profile.payCycle.frequency.name}","nextPayDate":"${profile.payCycle.nextPayDate}","isDemo":$isDemo}"""
                 conn.outputStream.use { it.write(body.toByteArray()) }
                 check(conn.responseCode in 200..299) { "Auditor returned ${conn.responseCode}" }
                 InsightsResult.parse(conn.inputStream.bufferedReader().readText())
@@ -70,19 +73,28 @@ class CloudRunInsightsRepository(private val baseUrl: String) : InsightsReposito
         }
 }
 
-/** Uses Cloud Run when `insights_base_url` is set in Remote Config, falling back to the stub on failure or when blank. */
+/** Uses StubInsightsRepository (Golden Happy Path chips) when `is_demo` is true; otherwise uses Cloud Run when `insights_base_url` is set in Remote Config, falling back to the stub on failure or when blank. */
 class RoutingInsightsRepository @Inject constructor(
     private val remoteConfig: FirebaseRemoteConfig?,
     private val stub: StubInsightsRepository
 ) : InsightsRepository {
 
-    constructor(stub: StubInsightsRepository, urlProvider: () -> String) : this(null, stub) {
+    constructor(
+        stub: StubInsightsRepository,
+        urlProvider: () -> String,
+        isDemoProvider: () -> Boolean = { false }
+    ) : this(null, stub) {
         this.urlProvider = urlProvider
+        this.isDemoProvider = isDemoProvider
     }
 
     internal var urlProvider: () -> String = { remoteConfig?.getString("insights_base_url").orEmpty() }
+    internal var isDemoProvider: () -> Boolean = { remoteConfig?.getBoolean("is_demo") ?: false }
 
     override suspend fun loadInsights(profile: OnboardingProfile): InsightsResult {
+        val isDemo = isDemoProvider()
+        if (isDemo) return stub.loadInsights(profile)
+
         val url = urlProvider().trim()
         if (url.isBlank()) return stub.loadInsights(profile)
 
@@ -96,7 +108,7 @@ class RoutingInsightsRepository @Inject constructor(
 
         for (targetUrl in urlsToTry) {
             try {
-                return CloudRunInsightsRepository(targetUrl).loadInsights(profile)
+                return CloudRunInsightsRepository(targetUrl, isDemo = isDemo).loadInsights(profile)
             } catch (e: Exception) {
                 try {
                     android.util.Log.w("Insights", "Failed to load insights from $targetUrl, trying next URL or stub", e)

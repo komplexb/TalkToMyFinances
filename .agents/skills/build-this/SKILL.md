@@ -8,7 +8,10 @@ disable-model-invocation: true
 
 Workflow harness for implementing a task from an issue URL or number.
 
-To begin, branch from the current branch with the pattern `spec/<section-or-issue-number>-<hyphenated-issue-title>`.
+To begin:
+1. Identify the intended base branch (e.g., `main` or the active feature/spec branch if part of a stacked track).
+2. Fetch latest changes: `git fetch origin`.
+3. Create the new branch off the remote tracking ref: `git checkout -b spec/<section-or-issue-number>-<hyphenated-issue-title> origin/<base-branch>`. Never branch off a stale local branch with unpushed merges.
 
 ## Workflow Rules
 
@@ -29,8 +32,14 @@ Guide the implementation with these project rules:
 - **How to deploy**: Add or extend a "How to deploy" section outlining steps needed for prod (`firebase-tools`, console actions, etc.).
 
 ## Execution
-
+Invoke these skills as needed:  ⁠ ⁠ ⁠ 
+- ⁠@⁠f⁠i⁠r⁠e⁠b⁠a⁠s⁠e⁠-⁠a⁠i⁠-⁠l⁠o⁠g⁠i⁠c⁠-⁠b⁠a⁠s⁠i⁠c⁠s⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠c⁠o⁠d⁠e⁠b⁠a⁠s⁠e⁠-⁠d⁠e⁠s⁠i⁠g⁠n⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠t⁠d⁠d⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠g⁠e⁠m⁠i⁠n⁠i⁠-⁠a⁠p⁠i⁠-⁠d⁠e⁠v⁠ ⁠ ⁠ ⁠   ⁠ ⁠ ⁠ 
+- ⁠@⁠g⁠e⁠m⁠i⁠n⁠i⁠-⁠l⁠i⁠v⁠e⁠-⁠a⁠p⁠i⁠-⁠d⁠e⁠v⁠ ⁠ ⁠ ⁠ 
 Call the Skill tool with `implement` (or run `/implement` or `@implement`) with the ticket reference, adhering strictly to the workflow rules above.
+
 
 ## Manual Testing
 Instruct the developer how to manually test the new change/feature.
@@ -40,4 +49,8 @@ Setup the developer for success:
 - tell the developer where to go in the UI to exercise the new capability, and what to look for to verify it works as expected.
 
 ## PR
-Assuming /code-review was run as a part of implement, Create a PR and populate the description with the response from the Skill tool with `pr` (or run `/pr`).
+1. **Pre-PR Rebase & Blast Radius Verification**:
+   - Run `git fetch origin`.
+   - Rebase cleanly on the target base: `git rebase origin/<base-branch>`.
+   - Verify the blast radius: `git diff --stat origin/<base-branch>..HEAD`. Confirm that only files relevant to the issue were touched (no unintended files from parent/sibling branches).
+2. Assuming `/code-review` was run as part of implement, create the PR using `gh pr create --base <base-branch> ...` (ensuring `--base` matches the intended base branch rather than defaulting to `main` when working on stacked tracks) and populate the description with the response from the Skill tool with `pr` (or run `/pr`).

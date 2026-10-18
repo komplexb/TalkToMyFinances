@@ -35,7 +35,8 @@ data class VisualCard(
     val items: List<VisualCardItem> = emptyList(),
     @SerialName("audit_receipt")
     val auditReceipt: AuditReceipt? = null,
-    val timeframe: String? = null
+    val timeframe: String? = null,
+    val caption: String? = null
 ) {
     val type: VisualCardType
         get() = VisualCardType.from(cardType)

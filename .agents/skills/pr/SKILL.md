@@ -9,7 +9,7 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
-Run /pr-changelog and place the value in <changelog> section of the template.
+Run or invoke the pr-changelog skill and place the value in <changelog> section of the template.
 
 Use this template for writing the PR body:
 

@@ -81,6 +81,11 @@ class TwoTrackChatPipelineTest {
             messages.add(message)
             flow.value = messages.toList()
         }
+
+        override suspend fun clearMessages(userId: String) {
+            messages.clear()
+            flow.value = emptyList()
+        }
     }
 
     // Fake Live Voice Manager
@@ -110,6 +115,7 @@ class TwoTrackChatPipelineTest {
 
     // Testable AI Remote Data Source Fake
     private class FakeAIRemoteDataSource(
+        var auditorRepo: com.talktomyfinances.android.domain.AuditorRepository? = null,
         var specToReturn: FinancialQuerySpec = FinancialQuerySpec(
             targetMetric = TargetMetric.TOTAL_SUM,
             includedCategories = listOf("Dining")
@@ -121,33 +127,56 @@ class TwoTrackChatPipelineTest {
         var lastPassedReceipt: AuditReceipt? = null
         var lastPassedMessages: List<ChatMessage> = emptyList()
         var lastPassedGoal: FinancialGoal? = null
+        var lastPassedProfile: OnboardingProfile? = null
 
-        override suspend fun parseFinancialIntent(
-            prompt: String,
-            previousReceipt: AuditReceipt?,
-            recentMessages: List<ChatMessage>
-        ): FinancialQuerySpec {
-            lastPassedPrompt = prompt
-            lastPassedReceipt = previousReceipt
-            lastPassedMessages = recentMessages
-            return specToReturn
-        }
-
-        override suspend fun evaluateWithJudge(prose: String, verifiedAmount: Double?): String {
-            return judgeProseToReturn
-        }
-
-        override suspend fun generateConversationalGuidance(
+        override suspend fun sendMessage(
             prompt: String,
             recentMessages: List<ChatMessage>,
             previousReceipt: AuditReceipt?,
-            userGoal: FinancialGoal?
-        ): String {
+            userProfile: OnboardingProfile?,
+            onPartialResponse: ((com.talktomyfinances.android.domain.ChatResponseResult) -> Unit)?
+        ): com.talktomyfinances.android.domain.ChatResponseResult {
             lastPassedPrompt = prompt
             lastPassedReceipt = previousReceipt
             lastPassedMessages = recentMessages
-            lastPassedGoal = userGoal
-            return guidanceTextToReturn
+            lastPassedProfile = userProfile
+            lastPassedGoal = userProfile?.goal
+
+            if (specToReturn.isOutOfSpec) {
+                return com.talktomyfinances.android.domain.ChatResponseResult(prose = guidanceTextToReturn)
+            }
+
+            var receipt: AuditReceipt? = null
+            if (auditorRepo != null) {
+                receipt = auditorRepo?.compute(specToReturn)?.getOrNull()
+            }
+
+            var visualCard: com.talktomyfinances.android.domain.VisualCardPayload? = null
+            if (receipt != null && receipt.value != null && specToReturn.targetMetric != TargetMetric.TRANSACTION_LIST && receipt.breakdown.size > 1) {
+                val distinctTxCategories = receipt.transactions.map { it.category }.filter { it.isNotBlank() }.distinct()
+                val title = when {
+                    receipt.spec.includedCategories.isNotEmpty() -> receipt.spec.includedCategories.joinToString()
+                    distinctTxCategories.isNotEmpty() -> distinctTxCategories.joinToString()
+                    receipt.spec.includedMerchants.size == 1 -> receipt.spec.includedMerchants.first()
+                    else -> receipt.spec.includedMerchants.firstOrNull() ?: "Spending"
+                }
+                visualCard = com.talktomyfinances.android.domain.VisualCardPayload(
+                    cardType = com.talktomyfinances.android.domain.VisualCardType.CATEGORY_BREAKDOWN.wireName,
+                    title = title,
+                    totalAmount = receipt.value,
+                    items = receipt.breakdown.map { com.talktomyfinances.android.domain.VisualCardItem(it.category, it.amount, it.percentage) },
+                    auditReceipt = receipt,
+                    timeframe = receipt.spec.dateWindow.type.name
+                )
+            }
+
+            val prose = if (specToReturn.targetMetric == TargetMetric.TRANSACTION_LIST) receipt?.summary ?: "" else judgeProseToReturn
+
+            return com.talktomyfinances.android.domain.ChatResponseResult(
+                prose = prose,
+                auditReceipt = receipt,
+                visualCard = visualCard
+            )
         }
     }
 
@@ -194,7 +223,7 @@ class TwoTrackChatPipelineTest {
         val result = repo.loadInsights(
             OnboardingProfile(
                 goal = FinancialGoal.MINDFUL_SPENDING,
-                payCycle = PayCycle(PayFrequency.FORTNIGHTLY, "2026-10-20")
+                payCycle = PayCycle(PayFrequency.FORTNIGHTLY, "2026-10-13")
             )
         )
         assertEquals(3, result.chips.size)
@@ -222,6 +251,7 @@ class TwoTrackChatPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 targetMetric = TargetMetric.TOTAL_SUM,
                 includedCategories = listOf("Dining")
@@ -232,7 +262,6 @@ class TwoTrackChatPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -264,6 +293,7 @@ class TwoTrackChatPipelineTest {
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
         val fakeAI = FakeAIRemoteDataSource(
+            auditorRepo = auditorRepo,
             specToReturn = FinancialQuerySpec(
                 isOutOfSpec = true,
                 outOfSpecReason = "Query is an open-ended habit description."
@@ -274,7 +304,6 @@ class TwoTrackChatPipelineTest {
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -302,12 +331,11 @@ class TwoTrackChatPipelineTest {
         val auditorRepo = StubAuditorRepository()
         val voiceManager = FakeLiveVoiceManager()
         val profileStore = FakeProfileStore()
-        val fakeAI = FakeAIRemoteDataSource()
+        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
 
         val viewModel = ChatViewModel(
             chatRepository = chatRepo,
             aiChatDataSource = fakeAI,
-            auditorRepository = auditorRepo,
             authRepository = authRepo,
             liveVoiceManager = voiceManager,
             profileStore = profileStore
@@ -402,4 +430,86 @@ class TwoTrackChatPipelineTest {
         assertEquals(listOf("Dining"), diningSpec.includedCategories)
         assertEquals(DateWindowType.LAST_WEEK, diningSpec.dateWindow.type)
     }
+
+    @Test
+    fun clearChatHistory_emptiesMessagesAndResetsContext() = runBlocking {
+        val chatRepo = FakeChatRepository()
+        val authRepo = FakeAuthRepository()
+        val auditorRepo = StubAuditorRepository()
+        val voiceManager = FakeLiveVoiceManager()
+        val profileStore = FakeProfileStore()
+        val fakeAI = FakeAIRemoteDataSource(auditorRepo = auditorRepo)
+
+        val viewModel = ChatViewModel(
+            chatRepository = chatRepo,
+            aiChatDataSource = fakeAI,
+            authRepository = authRepo,
+            liveVoiceManager = voiceManager,
+            profileStore = profileStore
+        )
+
+        viewModel.sendMessage("How much did I spend on utility bills this quarter?")
+        assertTrue(chatRepo.messages.isNotEmpty())
+
+        viewModel.clearChatHistory()
+        assertTrue("Expected chat repository messages to be cleared", chatRepo.messages.isEmpty())
+    }
+
+    @Test
+    fun sanitizeProseForCardAttachment_stripsDuplicateBulletsAndTables() {
+        val rawProseWithBullets = """
+            Here is your dining breakdown for this month. You've spent $150 across 3 visits.
+            • 2026-03-01 — CAFE: $4.50
+            • 2026-03-05 — DINER: $45.50
+            - 2026-03-10 — RESTAURANT: $100.00
+            | Date | Merchant | Amount |
+            | 2026-03-01 | CAFE | $4.50 |
+            This keeps you well within your $500 monthly dining target towards your Emergency Fund.
+        """.trimIndent()
+
+        val sanitized = ChatViewModel.sanitizeProseForCardAttachment(rawProseWithBullets)
+
+        assertFalse("Expected bullet lines to be stripped", sanitized.contains("•"))
+        assertFalse("Expected dash bullet lines to be stripped", sanitized.contains("- 2026-03-10"))
+        assertFalse("Expected table lines to be stripped", sanitized.contains("| Date |"))
+        assertTrue("Expected intro to remain", sanitized.contains("Here is your dining breakdown"))
+        assertTrue("Expected goal takeaway to remain", sanitized.contains("This keeps you well within your $500 monthly dining target"))
+    }
+
+    @Test
+    fun sharedBaseToolPrompt_containsComplementaryCardPresentationRule() {
+        val prompt = com.talktomyfinances.android.data.datasource.AIRemoteDataSource.buildSharedBaseToolPrompt("Emergency Fund")
+        assertTrue(prompt.contains("Complementary Card Presentation Rule"))
+        assertTrue(prompt.contains("NEVER output raw data tables, transaction bullet lists"))
+        assertTrue(prompt.contains("Emergency Fund"))
+    }
+
+    @Test
+    fun sanitizeProseForCardAttachment_completelyDropsAglEnergyTransactionBulletsAndMiddleDots_retainingOnlyCoaching() {
+        val rawGeminiOutput = """
+            • 2026-05-15 — AGL ENERGY: $103.43
+            • 2026-04-15 — AGL ENERGY: $116.84
+            • 2026-03-15 — AGL ENERGY: $116.88
+            • 2026-02-15 — AGL ENERGY: $98.61
+            • 2026-01-15 — AGL ENERGY: $86.86
+            · 2025-12-15 — AGL ENERGY: $121.53
+            · 2025-11-15 — AGL ENERGY: $131.22
+            · 2025-10-15 — AGL ENERGY: $129.28
+
+            Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.
+        """.trimIndent()
+
+        val sanitized = ChatViewModel.sanitizeProseForCardAttachment(rawGeminiOutput)
+
+        assertFalse("Expected standard bullets to be stripped", sanitized.contains("2026-05-15"))
+        assertFalse("Expected middle dot bullets to be stripped", sanitized.contains("·"))
+        assertFalse("Expected middle dot transaction date to be stripped", sanitized.contains("2025-12-15"))
+        assertFalse("Expected merchant bullets to be stripped", sanitized.contains("AGL ENERGY"))
+        assertEquals(
+            "Your bills dropped noticeably in recent months to well under $50, down from over $100 earlier in the year. Putting aside roughly $45 from each fortnightly pay into a bills buffer can help smooth out these seasonal swings and keep your spending mindful.",
+            sanitized
+        )
+    }
 }
+
+

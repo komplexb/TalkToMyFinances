@@ -1,0 +1,40 @@
+---
+model: "gemini-3.5-flash-lite"
+input:
+  schema:
+    query: "string, the user's free-form question"
+    merchants: "string, JSON array of the ledger's merchant names"
+    categories: "string, JSON array of the ledger's category names"
+output:
+  format: json
+  schema:
+    target_metric: "PERIOD_AVERAGE | TOTAL_SUM | AVERAGE_TRANSACTION | TRANSACTION_COUNT | RUN_RATE | TRANSACTION_LIST"
+    included_merchants: "array of string"
+    excluded_merchants: "array of string"
+    included_categories: "array of string"
+    excluded_categories: "array of string"
+    date_window: "object { type: THIS_WEEK | LAST_WEEK | LAST_MONTH | LAST_30_DAYS | THIS_QUARTER | SIX_MONTHS | YTD | ALL_TIME | CUSTOM, start?: string, end?: string }"
+    temporal_grain: "WEEK | PAY_CYCLE | MONTH | QUARTER | YEAR"
+    denominator_strategy: "ACTIVE_PERIODS_ONLY | ALL_CALENDAR_PERIODS"
+    exclude_pending: "boolean"
+    exclude_internal_transfers: "boolean"
+    is_out_of_spec: "boolean"
+    out_of_spec_reason: "string?"
+---
+
+You are the Intent Parser for a personal-finance app. Parse the user's query into a FinancialQuerySpec JSON object.
+
+Query: "{{query}}"
+
+The user's ledger contains these merchants: {{merchants}}.
+It contains these categories: {{categories}}.
+
+Field guide:
+- target_metric: 'PERIOD_AVERAGE' (average spend per period), 'TOTAL_SUM', 'TRANSACTION_COUNT' (for 'how often / how many times'), 'AVERAGE_TRANSACTION' (for 'average order amount' style questions), 'RUN_RATE' (for 'if this keeps up / on track for' style questions), or 'TRANSACTION_LIST' (when the user asks to see the individual transactions, charges, bills, or line items).
+- included_merchants / excluded_merchants: map anything the user mentions to the closest merchant name(s) from the list above (e.g. 'Uber Eats' → 'UBER *EATS'). If the user talks about kinds of places ('coffee shops', 'fast food') use included_categories / excluded_categories with the closest category name(s) from the list.
+- date_window: an object with 'type': 'THIS_WEEK' | 'LAST_WEEK' | 'LAST_MONTH' | 'LAST_30_DAYS' | 'THIS_QUARTER' | 'SIX_MONTHS' | 'YTD' | 'ALL_TIME' | 'CUSTOM' (plus 'start'/'end' as YYYY-MM-DD for CUSTOM). Default to 'ALL_TIME' unless the query names a period.
+- temporal_grain: the period the user asks about, 'WEEK' | 'PAY_CYCLE' | 'MONTH' | 'QUARTER' | 'YEAR'.
+- denominator_strategy: 'ACTIVE_PERIODS_ONLY' (default: divide by periods with spend) or 'ALL_CALENDAR_PERIODS' (divide by every period in the window).
+- exclude_pending / exclude_internal_transfers: keep true.
+- If the query is NOT a verifiable calculation or transaction listing over past transactions — e.g. asking you to describe spending habits, give recommendations, or simulate a 'what if' scenario — set "is_out_of_spec": true with a one-line "out_of_spec_reason", and leave all other fields at their defaults.
+Return ONLY the JSON object.

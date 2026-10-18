@@ -44,7 +44,6 @@ data class ChatUiState(
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
     private val aiChatDataSource: AIChatDataSource,
-    private val auditorRepository: AuditorRepository,
     private val authRepository: AuthRepository,
     private val liveVoiceManager: LiveVoiceManager,
     private val profileStore: ProfileStore
@@ -152,75 +151,42 @@ class ChatViewModel @Inject constructor(
             try {
                 val previousReceipt = _messagesFlow.value.lastOrNull { it.auditReceipt != null }?.auditReceipt
                 val recentTurns = _messagesFlow.value.takeLast(4)
+                val userProfile = try { profileStore.load() } catch (_: Exception) { null }
 
-                // 1. Intent Parsing via Firebase AI Logic (gemini-3.8-flash) with context resolution
-                val spec = aiChatDataSource.parseFinancialIntent(
+                var partialMsgId: String? = null
+
+                val response = aiChatDataSource.sendMessage(
                     prompt = trimmed,
+                    recentMessages = recentTurns,
                     previousReceipt = previousReceipt,
-                    recentMessages = recentTurns
+                    userProfile = userProfile,
+                    onPartialResponse = { partial ->
+                        viewModelScope.launch {
+                            val partialMsg = ChatMessage(
+                                sender = MessageSender.ASSISTANT,
+                                text = "Checking ledger & calculating verified facts...",
+                                auditReceipt = partial.auditReceipt,
+                                visualCard = partial.visualCard
+                            )
+                            partialMsgId = partialMsg.id
+                            chatRepository.saveMessage(uid, partialMsg)
+                        }
+                    }
                 )
 
-                // Track B (Conversational Guidance & Follow-ups):
-                // Out-of-spec queries (advice, habit descriptions, "what if" simulations, guidance)
-                // route directly to Track B for empathetic coaching grounded in user goals and recent context.
-                if (spec.isOutOfSpec) {
-                    val userGoal = try {
-                        profileStore.load()?.goal
-                    } catch (_: Exception) {
-                        null
-                    }
-                    val guidanceText = aiChatDataSource.generateConversationalGuidance(
-                        prompt = trimmed,
-                        recentMessages = recentTurns,
-                        previousReceipt = previousReceipt,
-                        userGoal = userGoal
-                    )
-                    val assistantMsg = ChatMessage(
-                        sender = MessageSender.ASSISTANT,
-                        text = guidanceText
-                    )
-                    chatRepository.saveMessage(uid, assistantMsg)
-                    return@launch
+                val hasCardOrReceipt = response.auditReceipt != null || response.visualCard != null
+                val finalizedText = if (hasCardOrReceipt) {
+                    sanitizeProseForCardAttachment(response.prose)
+                } else {
+                    response.prose
                 }
 
-                // Track A (Verifiable Math):
-                // 2. Deterministic Math via Cloud Run Auditor (/compute)
-                val auditResult = auditorRepository.compute(spec)
-                val rawReceipt = auditResult.getOrThrow()
-                val receipt = rawReceipt.copy(summary = CurrencySanitizer.sanitize(rawReceipt.summary))
-
-                // 3. Plain-English Readability Check via gemini-3.5-flash-lite Judge
-                val finalProse = aiChatDataSource.evaluateWithJudge(receipt.summary, receipt.value)
-
-                // 4. Assemble inline Visual Card for Track A verifiable math
-                val visualCard = if (receipt.value != null) {
-                    val title = when {
-                        receipt.spec.includedCategories.isNotEmpty() ->
-                            receipt.spec.includedCategories.joinToString() + " Spending"
-                        receipt.spec.includedMerchants.isNotEmpty() ->
-                            receipt.spec.includedMerchants.joinToString() + " Spending"
-                        else -> "Spending Breakdown"
-                    }
-                    VisualCard(
-                        cardType = VisualCardType.CATEGORY_BREAKDOWN.wireName,
-                        title = title,
-                        totalAmount = receipt.value,
-                        items = if (receipt.spec.includedCategories.isNotEmpty()) {
-                            receipt.spec.includedCategories.map {
-                                VisualCardItem(category = it, amount = receipt.value, percentage = 100.0)
-                            }
-                        } else emptyList(),
-                        auditReceipt = receipt,
-                        timeframe = receipt.spec.dateWindow.type.name
-                    )
-                } else null
-
-                // 5. Save Assistant turn with Audit Receipt and Visual Card to Firestore
                 val assistantMsg = ChatMessage(
+                    id = partialMsgId ?: java.util.UUID.randomUUID().toString(),
                     sender = MessageSender.ASSISTANT,
-                    text = finalProse,
-                    auditReceipt = receipt,
-                    visualCard = visualCard
+                    text = finalizedText,
+                    auditReceipt = response.auditReceipt,
+                    visualCard = response.visualCard
                 )
                 chatRepository.saveMessage(uid, assistantMsg)
             } catch (e: Exception) {
@@ -246,16 +212,56 @@ class ChatViewModel @Inject constructor(
             liveVoiceManager.visualCardEvents.collect { payload ->
                 val uid = getOrEnsureUserId() ?: return@collect
 
-                val title = payload.title.ifBlank { "spending breakdown" }
-                val timeframeSuffix = if (!payload.timeframe.isNullOrBlank()) " for ${payload.timeframe}" else ""
-                val summaryText = "Here is the $title$timeframeSuffix."
+                val title = payload.title.ifBlank { "Spending breakdown" }
+                val timeframeDesc = when (payload.timeframe?.trim()?.uppercase()) {
+                    "THIS_WEEK" -> "this week"
+                    "LAST_WEEK" -> "last week"
+                    "THIS_PAY_CYCLE" -> "this pay cycle"
+                    "LAST_30_DAYS" -> "over the last 30 days"
+                    "THIS_QUARTER" -> "this quarter"
+                    "SIX_MONTHS" -> "over the past 6 months"
+                    "YTD" -> "so far this year"
+                    null, "" -> null
+                    else -> payload.timeframe
+                }
 
-                val chatMsg = ChatMessage(
-                    sender = MessageSender.ASSISTANT,
-                    text = summaryText,
-                    visualCard = payload,
-                    auditReceipt = payload.auditReceipt
-                )
+                val defaultSummaryText = when {
+                    timeframeDesc != null && !title.contains(timeframeDesc, ignoreCase = true) ->
+                        "Here is your $title $timeframeDesc."
+                    else ->
+                        "Here is your $title."
+                }
+                val aiCaption = payload.caption?.trim()?.takeIf { it.isNotBlank() }?.let { sanitizeProseForCardAttachment(it) }
+
+                val chatMsg = when (payload.cardType) {
+                    "transaction_list" -> {
+                        val receipt = payload.auditReceipt
+                        val text = aiCaption ?: defaultSummaryText
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = text,
+                            visualCard = null,
+                            auditReceipt = receipt
+                        )
+                    }
+                    "audit_only" -> {
+                        val text = aiCaption ?: payload.auditReceipt?.summary?.lines()?.firstOrNull() ?: defaultSummaryText
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = text,
+                            visualCard = null,
+                            auditReceipt = payload.auditReceipt
+                        )
+                    }
+                    else -> {
+                        ChatMessage(
+                            sender = MessageSender.ASSISTANT,
+                            text = aiCaption ?: defaultSummaryText,
+                            visualCard = payload,
+                            auditReceipt = payload.auditReceipt
+                        )
+                    }
+                }
                 try {
                     chatRepository.saveMessage(uid, chatMsg)
                 } catch (e: Exception) {
@@ -269,7 +275,14 @@ class ChatViewModel @Inject constructor(
         _inputMode.value = ChatInputMode.VOICE
         _error.value = null
         viewModelScope.launch {
-            val result = liveVoiceManager.startSession()
+            val previousReceipt = _messagesFlow.value.lastOrNull { it.auditReceipt != null }?.auditReceipt
+            val recentTurns = _messagesFlow.value.takeLast(4)
+            val userProfile = try { profileStore.load() } catch (_: Exception) { null }
+            val result = liveVoiceManager.startSession(
+                recentMessages = recentTurns,
+                previousReceipt = previousReceipt,
+                userProfile = userProfile
+            )
             if (result.isFailure) {
                 _error.value = result.exceptionOrNull()?.message ?: "Failed to start voice session"
             }
@@ -288,10 +301,41 @@ class ChatViewModel @Inject constructor(
         liveVoiceManager.setMuted(!currentMute)
     }
 
+    fun clearChatHistory() {
+        _error.value = null
+        primedPromptHandled = false
+        viewModelScope.launch {
+            val uid = getOrEnsureUserId() ?: return@launch
+            try {
+                chatRepository.clearMessages(uid)
+                _messagesFlow.value = emptyList()
+            } catch (e: Exception) {
+                _error.value = "Failed to clear chat history: ${e.message}"
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch {
             liveVoiceManager.stopSession()
         }
     }
+
+    companion object {
+        private val LINE_ITEM_OR_BULLET_REGEX = Regex(
+            "^\\s*([•·‣◦⁃∙●○▪▫*—–\\-+]|\\d+[\\.\\)])\\s+|^\\s*\\d{4}-\\d{2}-\\d{2}|^\\s*\\||\\d{4}-\\d{2}-\\d{2}.*(\\\$|AUD)",
+            RegexOption.IGNORE_CASE
+        )
+
+        fun sanitizeProseForCardAttachment(prose: String): String {
+            val cleanedLines = prose.lines().filterNot { line ->
+                LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(line)
+            }
+            val cleaned = cleanedLines.joinToString("\n").replace(Regex("\n{3,}"), "\n\n").trim()
+            val nonBulletLine = prose.lines().firstOrNull { it.isNotBlank() && !LINE_ITEM_OR_BULLET_REGEX.containsMatchIn(it) }
+            return if (cleaned.isNotBlank()) cleaned else nonBulletLine ?: "Here is your verified breakdown."
+        }
+    }
 }
+

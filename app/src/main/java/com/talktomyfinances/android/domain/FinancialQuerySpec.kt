@@ -9,7 +9,8 @@ enum class TargetMetric {
     @SerialName("AVERAGE_TRANSACTION") AVERAGE_TRANSACTION,
     @SerialName("PERIOD_AVERAGE") PERIOD_AVERAGE,
     @SerialName("TRANSACTION_COUNT") TRANSACTION_COUNT,
-    @SerialName("RUN_RATE") RUN_RATE
+    @SerialName("RUN_RATE") RUN_RATE,
+    @SerialName("TRANSACTION_LIST") TRANSACTION_LIST
 }
 
 @Serializable
@@ -30,6 +31,7 @@ enum class DenominatorStrategy {
 @Serializable
 enum class DateWindowType {
     @SerialName("THIS_WEEK") THIS_WEEK,
+    @SerialName("THIS_PAY_CYCLE") THIS_PAY_CYCLE,
     @SerialName("LAST_WEEK") LAST_WEEK,
     @SerialName("LAST_MONTH") LAST_MONTH,
     @SerialName("LAST_30_DAYS") LAST_30_DAYS,
@@ -92,8 +94,54 @@ data class FinancialQuerySpec(
 )
 
 @Serializable
+data class BreakdownItem(
+    val category: String,
+    val amount: Double,
+    val percentage: Double = 0.0,
+    val count: Int = 0
+)
+
+@Serializable
+data class MatchedTransaction(
+    val date: String,
+    val merchant: String,
+    val category: String,
+    val amount: Double
+)
+
+@Serializable
 data class AuditReceipt(
     val summary: String,
     val value: Double? = null,
-    val spec: FinancialQuerySpec = FinancialQuerySpec()
+    val breakdown: List<BreakdownItem> = emptyList(),
+    val transactions: List<MatchedTransaction> = emptyList(),
+    val spec: FinancialQuerySpec = FinancialQuerySpec(),
+    @SerialName("income_total") val incomeTotal: Double? = null
+) {
+    fun toReceiptTemplate(): ReceiptTemplate {
+        val nonEmptyLines = summary.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val headlineLines = mutableListOf<String>()
+        val bulletItems = mutableListOf<String>()
+
+        for (line in nonEmptyLines) {
+            when {
+                line.startsWith("•") -> bulletItems.add(line.removePrefix("•").trim())
+                line.startsWith("- ") -> bulletItems.add(line.removePrefix("- ").trim())
+                bulletItems.isEmpty() -> headlineLines.add(line)
+                else -> bulletItems.add(line)
+            }
+        }
+
+        val headline = headlineLines.joinToString(" ").ifBlank { summary.trim() }
+        return ReceiptTemplate(
+            headline = headline,
+            bullets = bulletItems
+        )
+    }
+}
+
+data class ReceiptTemplate(
+    val headline: String,
+    val bullets: List<String>
 )
+

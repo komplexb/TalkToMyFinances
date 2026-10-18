@@ -10,6 +10,7 @@ class DateWindow(BaseModel):
 
     type: Literal[
         "THIS_WEEK",
+        "THIS_PAY_CYCLE",
         "LAST_WEEK",
         "LAST_MONTH",
         "LAST_30_DAYS",
@@ -46,7 +47,14 @@ class FinancialQuerySpec(BaseModel):
     simulations) so the engine never force-fits a number (gap 8).
     """
 
-    target_metric: Literal["AVERAGE_TRANSACTION", "PERIOD_AVERAGE", "TOTAL_SUM", "TRANSACTION_COUNT", "RUN_RATE"]
+    target_metric: Literal[
+        "AVERAGE_TRANSACTION",
+        "PERIOD_AVERAGE",
+        "TOTAL_SUM",
+        "TRANSACTION_COUNT",
+        "RUN_RATE",
+        "TRANSACTION_LIST",
+    ]
     included_merchants: List[str] = Field(default_factory=list)
     excluded_merchants: List[str] = Field(default_factory=list)
     included_categories: List[str] = Field(default_factory=list)
@@ -58,6 +66,20 @@ class FinancialQuerySpec(BaseModel):
     exclude_internal_transfers: bool = True
     is_out_of_spec: bool = False
     out_of_spec_reason: Optional[str] = None
+
+
+class BreakdownItem(BaseModel):
+    category: str
+    amount: float
+    percentage: float
+    count: int = 0
+
+
+class MatchedTransaction(BaseModel):
+    date: str
+    merchant: str
+    category: str
+    amount: float
 
 
 class AuditReceipt(BaseModel):
@@ -78,7 +100,10 @@ class AuditReceipt(BaseModel):
     matched_excluded_merchants: List[str] = Field(default_factory=list)
     matched_categories: List[str] = Field(default_factory=list)
     unmatched_terms: List[str] = Field(default_factory=list)
+    breakdown: List[BreakdownItem] = Field(default_factory=list)
+    transactions: List[MatchedTransaction] = Field(default_factory=list)
     spec: FinancialQuerySpec
+    income_total: Optional[float] = None
 
 
 class InsightChip(BaseModel):
@@ -90,3 +115,4 @@ class InsightChip(BaseModel):
 
 class AuditResponse(BaseModel):
     chips: List[InsightChip]
+

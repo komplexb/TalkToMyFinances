@@ -34,6 +34,16 @@ import com.talktomyfinances.android.ui.theme.TalkToMyFinancesTheme
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.painterResource
+import com.talktomyfinances.android.ui.onboarding.OnboardingDialog
+
 @Serializable
 object InsightsRoute
 
@@ -44,23 +54,92 @@ fun InsightsScreen(
     openChat: (String?) -> Unit
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
+    var showOnboardingDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(state) {
         if (state is InsightsUiState.NeedsOnboarding) openOnboarding()
     }
-    InsightsContent(state, onRetry = viewModel::load, openChat = openChat)
+
+    if (showOnboardingDialog) {
+        OnboardingDialog(
+            onDismiss = { showOnboardingDialog = false },
+            onFinished = { viewModel.load() }
+        )
+    }
+
+    InsightsContent(
+        state = state,
+        onRetry = viewModel::load,
+        openChat = openChat,
+        onOpenSettings = { showOnboardingDialog = true },
+        onClearChat = viewModel::clearChatHistory
+    )
 }
 
 @Composable
 fun InsightsContent(
     state: InsightsUiState,
     onRetry: () -> Unit = {},
-    openChat: (String?) -> Unit = {}
+    openChat: (String?) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onClearChat: () -> Unit = {}
 ) {
+    var showOverflowMenu by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.testTag("settings_button")
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_more_vert),
+                        contentDescription = "More options",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Goal & Pay Cycle Settings") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_settings),
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onOpenSettings()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Clear Chat History") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_delete),
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onClearChat()
+                        }
+                    )
+                }
+            }
+        }
         when (state) {
             InsightsUiState.Loading, InsightsUiState.NeedsOnboarding -> LoadingSequence(openChat)
             InsightsUiState.Error -> {

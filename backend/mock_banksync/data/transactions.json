@@ -8047,9 +8047,9 @@
     "id": "mock_tx_0541",
     "date": "2026-09-23",
     "description": "ALDI DELIVERY",
-    "amount": -42.23,
+    "amount": -25.34,
     "creditAmount": 0.0,
-    "debitAmount": 42.23,
+    "debitAmount": 25.34,
     "currency": "AUD",
     "category": "Dining",
     "type": "debit",
@@ -8149,6 +8149,21 @@
   },
   {
     "id": "mock_tx_0548",
+    "date": "2026-09-29",
+    "description": "UBER *EATS",
+    "amount": -31.4,
+    "creditAmount": 0.0,
+    "debitAmount": 31.4,
+    "currency": "AUD",
+    "category": "Dining",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "UBER *EATS"
+  },
+  {
+    "id": "mock_tx_0549",
     "date": "2026-09-30",
     "description": "WOOLWORTHS",
     "amount": -54.35,
@@ -8163,7 +8178,7 @@
     "merchantName": "WOOLWORTHS"
   },
   {
-    "id": "mock_tx_0549",
+    "id": "mock_tx_0550",
     "date": "2026-09-30",
     "description": "HARBOUR GROCER",
     "amount": -40.88,
@@ -8178,7 +8193,22 @@
     "merchantName": "HARBOUR GROCER"
   },
   {
-    "id": "mock_tx_0550",
+    "id": "mock_tx_0551",
+    "date": "2026-09-30",
+    "description": "DOORDASH",
+    "amount": -25.5,
+    "creditAmount": 0.0,
+    "debitAmount": 25.5,
+    "currency": "AUD",
+    "category": "Dining",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "DOORDASH"
+  },
+  {
+    "id": "mock_tx_0552",
     "date": "2026-10-01",
     "description": "METRO PROPERTY GROUP *RENT",
     "amount": -2400.0,
@@ -8192,7 +8222,7 @@
     "bankId": "demo"
   },
   {
-    "id": "mock_tx_0551",
+    "id": "mock_tx_0553",
     "date": "2026-10-01",
     "description": "CORNER CAFE",
     "amount": -9.73,
@@ -8207,12 +8237,27 @@
     "merchantName": "CORNER CAFE"
   },
   {
-    "id": "mock_tx_0552",
+    "id": "mock_tx_0554",
+    "date": "2026-10-01",
+    "description": "UBER *EATS",
+    "amount": -28.9,
+    "creditAmount": 0.0,
+    "debitAmount": 28.9,
+    "currency": "AUD",
+    "category": "Dining",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "UBER *EATS"
+  },
+  {
+    "id": "mock_tx_0555",
     "date": "2026-10-02",
     "description": "JEMEN ELECTRICITY",
-    "amount": -105.83,
+    "amount": -36.5,
     "creditAmount": 0.0,
-    "debitAmount": 105.83,
+    "debitAmount": 36.5,
     "currency": "AUD",
     "category": "Utilities",
     "type": "debit",
@@ -8222,7 +8267,7 @@
     "merchantName": "JEMEN ELECTRICITY"
   },
   {
-    "id": "mock_tx_0553",
+    "id": "mock_tx_0556",
     "date": "2026-10-02",
     "description": "HARBOUR GROCER",
     "amount": -41.9,
@@ -8237,7 +8282,7 @@
     "merchantName": "HARBOUR GROCER"
   },
   {
-    "id": "mock_tx_0554",
+    "id": "mock_tx_0557",
     "date": "2026-10-02",
     "description": "WOOLWORTHS",
     "amount": -47.77,
@@ -8252,7 +8297,22 @@
     "merchantName": "WOOLWORTHS"
   },
   {
-    "id": "mock_tx_0555",
+    "id": "mock_tx_0558",
+    "date": "2026-10-02",
+    "description": "ALDI DELIVERY",
+    "amount": -38.45,
+    "creditAmount": 0.0,
+    "debitAmount": 38.45,
+    "currency": "AUD",
+    "category": "Dining",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "ALDI DELIVERY"
+  },
+  {
+    "id": "mock_tx_0559",
     "date": "2026-10-03",
     "description": "SQ *CAFE NEWTOWN",
     "amount": -12.68,
@@ -8267,7 +8327,7 @@
     "merchantName": "SQ *CAFE NEWTOWN"
   },
   {
-    "id": "mock_tx_0556",
+    "id": "mock_tx_0560",
     "date": "2026-10-04",
     "description": "UBER *EATS",
     "amount": -33.77,
@@ -8282,7 +8342,7 @@
     "merchantName": "UBER *EATS"
   },
   {
-    "id": "mock_tx_0557",
+    "id": "mock_tx_0561",
     "date": "2026-10-05",
     "description": "COLES",
     "amount": -53.63,
@@ -8297,7 +8357,7 @@
     "merchantName": "COLES"
   },
   {
-    "id": "mock_tx_0558",
+    "id": "mock_tx_0562",
     "date": "2026-10-05",
     "description": "UBER *METRO RIDESHARE",
     "amount": -16.34,
@@ -8312,7 +8372,22 @@
     "merchantName": "UBER"
   },
   {
-    "id": "mock_tx_0559",
+    "id": "mock_tx_0563",
+    "date": "2026-10-05",
+    "description": "AGL ENERGY",
+    "amount": -49.2,
+    "creditAmount": 0.0,
+    "debitAmount": 49.2,
+    "currency": "AUD",
+    "category": "Utilities",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "AGL ENERGY"
+  },
+  {
+    "id": "mock_tx_0564",
     "date": "2026-10-06",
     "description": "CORNER CAFE",
     "amount": -9.05,
@@ -8327,7 +8402,7 @@
     "merchantName": "CORNER CAFE"
   },
   {
-    "id": "mock_tx_0560",
+    "id": "mock_tx_0565",
     "date": "2026-10-07",
     "description": "EXAMPLE EMPLOYER SALARY",
     "amount": 3200.0,
@@ -8342,7 +8417,7 @@
     "reference": "PAYROLL"
   },
   {
-    "id": "mock_tx_0561",
+    "id": "mock_tx_0566",
     "date": "2026-10-07",
     "description": "HARBOUR GROCER",
     "amount": -47.98,
@@ -8357,7 +8432,7 @@
     "merchantName": "HARBOUR GROCER"
   },
   {
-    "id": "mock_tx_0562",
+    "id": "mock_tx_0567",
     "date": "2026-10-08",
     "description": "TRANSFER TO SAVINGS",
     "amount": -271.57,
@@ -8371,7 +8446,7 @@
     "bankId": "demo"
   },
   {
-    "id": "mock_tx_0563",
+    "id": "mock_tx_0568",
     "date": "2026-10-08",
     "description": "SHELL FUEL",
     "amount": -83.34,
@@ -8386,7 +8461,22 @@
     "merchantName": "SHELL FUEL"
   },
   {
-    "id": "mock_tx_0564",
+    "id": "mock_tx_0569",
+    "date": "2026-10-08",
+    "description": "TCP WATER",
+    "amount": -20.13,
+    "creditAmount": 0.0,
+    "debitAmount": 20.13,
+    "currency": "AUD",
+    "category": "Utilities",
+    "type": "debit",
+    "pending": false,
+    "accountId": "spending",
+    "bankId": "demo",
+    "merchantName": "TCP WATER"
+  },
+  {
+    "id": "mock_tx_0570",
     "date": "2026-10-09",
     "description": "IPL *STREAMY HD",
     "amount": -15.0,
@@ -8401,7 +8491,7 @@
     "merchantName": "STREAMY HD"
   },
   {
-    "id": "mock_tx_0565",
+    "id": "mock_tx_0571",
     "date": "2026-10-09",
     "description": "HARBOUR GROCER",
     "amount": -45.31,
@@ -8416,7 +8506,7 @@
     "merchantName": "HARBOUR GROCER"
   },
   {
-    "id": "mock_tx_0566",
+    "id": "mock_tx_0572",
     "date": "2026-10-09",
     "description": "HARBOUR GROCER",
     "amount": -46.12,
@@ -8431,7 +8521,7 @@
     "merchantName": "HARBOUR GROCER"
   },
   {
-    "id": "mock_tx_0567",
+    "id": "mock_tx_0573",
     "date": "2026-10-10",
     "description": "CORNER CAFE",
     "amount": -8.26,
@@ -8446,7 +8536,7 @@
     "merchantName": "CORNER CAFE"
   },
   {
-    "id": "mock_tx_0568",
+    "id": "mock_tx_0574",
     "date": "2026-10-10",
     "description": "BANK SERVICE FEE",
     "amount": -4.95,
@@ -8460,7 +8550,7 @@
     "bankId": "demo"
   },
   {
-    "id": "mock_tx_0569",
+    "id": "mock_tx_0575",
     "date": "2026-10-12",
     "description": "COLES",
     "amount": -48.86,
@@ -8475,7 +8565,7 @@
     "merchantName": "COLES"
   },
   {
-    "id": "mock_tx_0570",
+    "id": "mock_tx_0576",
     "date": "2026-10-12",
     "description": "SQ *CAFE NEWTOWN",
     "amount": -9.5,
@@ -8484,7 +8574,7 @@
     "currency": "AUD",
     "category": "Dining",
     "type": "debit",
-    "pending": true,
+    "pending": false,
     "accountId": "spending",
     "bankId": "demo",
     "merchantName": "SQ *CAFE NEWTOWN"

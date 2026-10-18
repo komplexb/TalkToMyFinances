@@ -22,6 +22,8 @@ class ChatDomainTest {
     private val json = Json { 
         ignoreUnknownKeys = true 
         encodeDefaults = true
+        isLenient = true
+        coerceInputValues = true
     }
 
     @Test
@@ -48,6 +50,32 @@ class ChatDomainTest {
         assertEquals(TargetMetric.PERIOD_AVERAGE, decoded.targetMetric)
         assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
         assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
+    }
+
+    @Test
+    fun financialQuerySpecDecodesWithNullTemporalGrainCoercedToDefault() {
+        val jsonWithNullGrain = """
+            {
+              "target_metric": "TOTAL_SUM",
+              "included_merchants": ["Uber"],
+              "excluded_merchants": [],
+              "included_categories": [],
+              "excluded_categories": [],
+              "date_window": { "type": "ALL_TIME", "start": null, "end": null },
+              "temporal_grain": null,
+              "denominator_strategy": null,
+              "exclude_pending": true,
+              "exclude_internal_transfers": true,
+              "is_out_of_spec": false,
+              "out_of_spec_reason": null
+            }
+        """.trimIndent()
+
+        val decoded = json.decodeFromString(FinancialQuerySpec.serializer(), jsonWithNullGrain)
+        assertEquals(TargetMetric.TOTAL_SUM, decoded.targetMetric)
+        assertEquals(TemporalGrain.MONTH, decoded.temporalGrain)
+        assertEquals(DenominatorStrategy.ACTIVE_PERIODS_ONLY, decoded.denominatorStrategy)
+        assertEquals(listOf("Uber"), decoded.includedMerchants)
     }
 
     @Test
@@ -562,5 +590,23 @@ class ChatDomainTest {
         assertEquals("error", (responseJson["status"] as? JsonPrimitive)?.content)
         assertEquals("Invalid payload format", (responseJson["message"] as? JsonPrimitive)?.content)
     }
+
+    @Test
+    fun auditReceiptToReceiptTemplateIncludesComparisonBullet() {
+        val summary = """
+            You spent ${'$'}105.83 across 3 transactions.
+            • Window: 2026-10-01 to 2026-10-12 (THIS_QUARTER)
+            • Comparison: ${'$'}139.99 lower than prior quarter (${'$'}245.82) — AGL ENERGY (-${'$'}68.61), JEMEN ELECTRICITY (-${'$'}52.97), TCP WATER (-${'$'}18.41)
+            • Denominator: 1 active month with spend (ACTIVE_PERIODS_ONLY)
+            • Counted: categories: Utilities
+            • Excluded: pending transactions; internal transfers; credits, income and refunds
+        """.trimIndent()
+        val receipt = AuditReceipt(summary = summary, value = 105.83)
+        val template = receipt.toReceiptTemplate()
+        assertEquals("You spent $105.83 across 3 transactions.", template.headline)
+        assertEquals(5, template.bullets.size)
+        assertTrue(template.bullets[1].startsWith("Comparison: $139.99 lower than prior quarter ($245.82)"))
+    }
 }
+
 
